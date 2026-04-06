@@ -135,7 +135,7 @@ def analyze_token_address(
     _apply_profitability(candidates, client, resolved_options, progress_callback)
 
     _score_candidates(candidates)
-    ordered_candidates = sorted(candidates.values(), key=lambda item: (-item.alpha_score, item.early_rank or 999999, -item.trade_volume_usd))
+    ordered_candidates = sorted(candidates.values(), key=lambda item: (-item.alpha_score, item.early_rank or 999999, -item.trade_volume_usd, -item.holder_value_usd))
     report_payload = _build_report_payload(token_address, overview, holders, trades, ordered_candidates, resolved_options, funding_warning)
 
     _emit_progress(
@@ -171,11 +171,7 @@ def _validate_options(options: TokenIntelOptions) -> None:
         raise ValueError("funding_batch_size must be at least 1")
 
 
-def _build_candidates(
-    holders: list[TokenHolderSnapshot],
-    trades: list[TokenTradeSnapshot],
-    options: TokenIntelOptions,
-) -> dict[str, CandidateWallet]:
+def _build_candidates(holders: list[TokenHolderSnapshot], trades: list[TokenTradeSnapshot], options: TokenIntelOptions) -> dict[str, CandidateWallet]:
     candidates: dict[str, CandidateWallet] = {}
 
     def ensure(wallet: str) -> CandidateWallet:
@@ -220,25 +216,13 @@ def _build_candidates(
         if not candidate.first_trade_at:
             candidate.first_trade_at = _isoformat(stats["first_trade_at"])
 
-    ordered = sorted(
-        candidates.values(),
-        key=lambda item: (
-            -item.holder_value_usd,
-            item.early_rank or 999999,
-            -item.trade_volume_usd,
-        ),
-    )[: options.candidate_limit]
+    ordered = sorted(candidates.values(), key=lambda item: (-item.holder_value_usd, item.early_rank or 999999, -item.trade_volume_usd))[: options.candidate_limit]
     return {candidate.wallet: candidate for candidate in ordered}
 
 
-def _apply_funding_clusters(
-    candidates: dict[str, CandidateWallet],
-    client: BirdeyeClient,
-    token_address: str,
-    options: TokenIntelOptions,
-) -> str | None:
+def _apply_funding_clusters(candidates: dict[str, CandidateWallet], client: BirdeyeClient, token_address: str, options: TokenIntelOptions) -> str | None:
     wallets = list(candidates)
-    funding_entries: list[TokenFundingSnapshot] = []
+    funding_entries: list[Any] = []
     try:
         for start in range(0, len(wallets), options.funding_batch_size):
             batch = wallets[start : start + options.funding_batch_size]
@@ -266,21 +250,13 @@ def _apply_funding_clusters(
     return None
 
 
-def _apply_profitability(
-    candidates: dict[str, CandidateWallet],
-    client: BirdeyeClient,
-    options: TokenIntelOptions,
-    progress_callback: ProgressCallback | None = None,
-) -> None:
+def _apply_profitability(candidates: dict[str, CandidateWallet], client: BirdeyeClient, options: TokenIntelOptions, progress_callback: ProgressCallback | None = None) -> None:
     wallets = list(candidates)
     total = len(wallets)
     _emit_progress(progress_callback, phase="screening", completed=0, total=total, message=f"Scoring {total} candidate wallets by overall wallet profitability.")
 
     with ThreadPoolExecutor(max_workers=max(1, options.wallet_workers)) as executor:
-        future_to_wallet = {
-            executor.submit(client.fetch_summary, wallet, duration=options.profitability_duration): wallet
-            for wallet in wallets
-        }
+        future_to_wallet = {executor.submit(client.fetch_summary, wallet, duration=options.profitability_duration): wallet for wallet in wallets}
         completed = 0
         for future in as_completed(future_to_wallet):
             completed += 1
@@ -289,26 +265,10 @@ def _apply_profitability(
             try:
                 summary = future.result()
                 candidate.profitability = assess_wallet(wallet, summary, options.profitability_thresholds)
-                _emit_progress(
-                    progress_callback,
-                    phase="screening",
-                    completed=completed,
-                    total=total,
-                    wallet=wallet,
-                    outcome=candidate.profitability.status,
-                    message=f"[{completed}/{total}] {wallet} -> {candidate.profitability.status}",
-                )
+                _emit_progress(progress_callback, phase="screening", completed=completed, total=total, wallet=wallet, outcome=candidate.profitability.status, message=f"[{completed}/{total}] {wallet} -> {candidate.profitability.status}")
             except BirdeyeAPIError as exc:
                 candidate.notes.append(f"Wallet profitability fetch failed: {exc}")
-                _emit_progress(
-                    progress_callback,
-                    phase="screening",
-                    completed=completed,
-                    total=total,
-                    wallet=wallet,
-                    outcome="request_failed",
-                    message=f"[{completed}/{total}] {wallet} -> profitability lookup failed",
-                )
+                _emit_progress(progress_callback, phase="screening", completed=completed, total=total, wallet=wallet, outcome="request_failed", message=f"[{completed}/{total}] {wallet} -> profitability lookup failed")
 
 
 def _score_candidates(candidates: dict[str, CandidateWallet]) -> None:
@@ -353,6 +313,10 @@ def _score_candidates(candidates: dict[str, CandidateWallet]) -> None:
             candidate.notes.append("Overall wallet profile clears the profitability thresholds.")
         if "early_buyer" in candidate.source_tags:
             candidate.notes.append("Appeared early in the sampled token trade flow.")
+        if "holder" in candidate.source_tags and candidate.holder_value_usd <= 0:
+            candidate.notes.append("Holder position value was unavailable in the Birdeye response.")
+        if "active_trader" in candidate.source_tags and candidate.trade_volume_usd <= 0:
+            candidate.notes.append("Trade volume was unavailable in the sampled Birdeye trade payload.")
 
 
 def _build_report_payload(
@@ -364,23 +328,23 @@ def _build_report_payload(
     options: TokenIntelOptions,
     funding_warning: str | None,
 ) -> dict[str, Any]:
-    status_counts = Counter(
-        candidate.profitability.status
-        for candidate in candidates
-        if candidate.profitability
-    )
+    status_counts = Counter(candidate.profitability.status for candidate in candidates if candidate.profitability)
     funding_clusters = Counter(candidate.funding_source for candidate in candidates if candidate.funding_source)
     cluster_rows = []
     for funded_by, size in funding_clusters.most_common(10):
         if size < 2:
             continue
-        cluster_rows.append(
-            {
-                "funding_source": funded_by,
-                "wallet_count": size,
-                "wallets": [candidate.wallet for candidate in candidates if candidate.funding_source == funded_by],
-            }
-        )
+        cluster_rows.append({"funding_source": funded_by, "wallet_count": size, "wallets": [candidate.wallet for candidate in candidates if candidate.funding_source == funded_by]})
+
+    data_quality = {
+        "overview_has_price": overview.price > 0,
+        "overview_has_market_cap": overview.market_cap > 0,
+        "overview_has_liquidity": overview.liquidity > 0,
+        "holders_with_usd_value": sum(1 for holder in holders if holder.value_usd > 0),
+        "trades_with_usd_value": sum(1 for trade in trades if trade.volume_usd > 0),
+        "candidates_with_holder_value": sum(1 for candidate in candidates if candidate.holder_value_usd > 0),
+        "candidates_with_trade_volume": sum(1 for candidate in candidates if candidate.trade_volume_usd > 0),
+    }
 
     analysis_notes = [
         "Early buyers are inferred from the earliest sampled token trades returned by Birdeye, not from full chain reconstruction.",
@@ -389,6 +353,14 @@ def _build_report_payload(
     ]
     if funding_warning:
         analysis_notes.append(funding_warning)
+    if not data_quality["overview_has_price"]:
+        analysis_notes.append("Token price was unavailable in the Birdeye overview payload for this token/API plan.")
+    if not data_quality["overview_has_market_cap"]:
+        analysis_notes.append("Market cap was unavailable in the Birdeye overview payload for this token/API plan.")
+    if data_quality["candidates_with_holder_value"] == 0 and any("holder" in candidate.source_tags for candidate in candidates):
+        analysis_notes.append("Holder USD values were not present in the token holder payload, so holder conviction is ranked by presence and share percentage only.")
+    if data_quality["candidates_with_trade_volume"] == 0 and any("active_trader" in candidate.source_tags for candidate in candidates):
+        analysis_notes.append("Trade USD values were not present in the sampled trade payload, so trader ranking leans on trade count and early participation instead.")
 
     return {
         "generated_at": _utc_now(),
@@ -418,6 +390,7 @@ def _build_report_payload(
             "borderline_wallets": status_counts.get("borderline", 0),
             "clusters_found": len(cluster_rows),
         },
+        "data_quality": data_quality,
         "top_holders": [holder.to_dict() for holder in holders[:10]],
         "clusters": cluster_rows,
         "candidates": [candidate.to_dict() for candidate in candidates],
@@ -431,11 +404,7 @@ def _build_candidate_csv(candidates: list[CandidateWallet]) -> str:
         rows = [{"wallet": "", "alpha_score": "", "source_tags": "", "notes": ""}]
     normalized = []
     for row in rows:
-        normalized.append({
-            **row,
-            "source_tags": ", ".join(row.get("source_tags") or []),
-            "notes": " | ".join(row.get("notes") or []),
-        })
+        normalized.append({**row, "source_tags": ", ".join(row.get("source_tags") or []), "notes": " | ".join(row.get("notes") or [])})
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=list(normalized[0].keys()))
     writer.writeheader()

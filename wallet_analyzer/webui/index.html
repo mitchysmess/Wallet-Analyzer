@@ -1,36 +1,36 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wallet Analyzer Studio</title>
+    <title>Wallet Analyzer Pro</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <div class="page-shell">
       <header class="hero panel reveal">
         <div>
-          <p class="eyebrow">Local Solana Screening Studio</p>
-          <h1>Find profitable traders and token-linked alpha wallets.</h1>
+          <p class="eyebrow">Professional Solana Research Workspace</p>
+          <h1>Research profitable traders and isolate token-linked alpha wallets.</h1>
           <p class="hero-copy">
-            Use the wallet screener for bulk address lists, or switch to Token Intel to inspect a contract address for top holders, early buyers, funding clusters, and candidate alpha wallets.
+            Screen wallet lists in bulk, then pivot into token-specific wallet discovery with holder, trader, and cluster heuristics designed for production-grade Solana research workflows.
           </p>
         </div>
         <div class="hero-metrics">
           <div class="metric-card">
-            <span class="metric-label">Mode 1</span>
-            <strong>Wallet Screen</strong>
-            <span>Bulk CSV, TXT, or JSON uploads with profitability scoring.</span>
+            <span class="metric-label">Wallet Screen</span>
+            <strong>Bulk trader triage</strong>
+            <span>Upload CSV, TXT, or JSON wallet lists and score them for profitability.</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Mode 2</span>
-            <strong>Token Intel</strong>
-            <span>Holders, sampled early buyers, and wallet clustering heuristics.</span>
+            <span class="metric-label">Token Intel</span>
+            <strong>Source alpha wallets</strong>
+            <span>Map sampled holders, early buyers, and trader activity for a token CA.</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Output</span>
-            <strong>CSV + JSON</strong>
-            <span>Download the ranked wallets or the full report payload.</span>
+            <span class="metric-label">Reports</span>
+            <strong>Research-ready exports</strong>
+            <span>Download ranked CSVs and full JSON payloads for deeper review.</span>
           </div>
         </div>
       </header>
@@ -167,7 +167,7 @@
 
             <aside class="notes">
               <div class="section-heading">
-                <p class="eyebrow">How it thinks</p>
+                <p class="eyebrow">Method</p>
                 <h2>Wallet screen notes</h2>
               </div>
               <ul class="note-list">
@@ -228,7 +228,7 @@
         </div>
 
         <div class="tab-panel hidden" id="panel-token" role="tabpanel">
-          <div class="main-grid mode-grid">
+          <div class="main-grid mode-grid token-mode-grid">
             <section class="uploader" aria-labelledby="token-title">
               <div class="section-heading">
                 <p class="eyebrow">Token Intel</p>
@@ -294,13 +294,13 @@
               </form>
             </section>
 
-            <aside class="notes">
+            <aside class="notes notes-strong">
               <div class="section-heading">
-                <p class="eyebrow">Heuristics</p>
+                <p class="eyebrow">Method</p>
                 <h2>How Token Intel scores wallets</h2>
               </div>
               <ul class="note-list">
-                <li><strong>Holder</strong> means the wallet appears in Birdeye’s token holder sample.</li>
+                <li><strong>Holder</strong> means the wallet appears in Birdeye�s token holder sample.</li>
                 <li><strong>Early buyer</strong> is inferred from the earliest sampled token trades returned by Birdeye.</li>
                 <li><strong>Cluster</strong> means multiple candidate wallets share the same first funding source.</li>
                 <li><strong>Alpha score</strong> blends source tags, wallet profitability, holder size, and funding overlaps.</li>
@@ -310,7 +310,7 @@
           </div>
 
           <section class="results hidden" id="token-results-panel" aria-live="polite">
-            <div class="results-header">
+            <div class="results-header results-header-tight">
               <div>
                 <p class="eyebrow">Token Intel</p>
                 <h2>Candidate alpha wallets</h2>
@@ -321,16 +321,18 @@
               </div>
             </div>
 
+            <div class="token-hero-card" id="token-hero-card"></div>
             <div class="summary-grid token-summary-grid" id="token-summary-grid"></div>
+            <div class="data-quality-panel" id="token-quality-panel"></div>
             <div class="spotlight-grid" id="token-clusters-grid"></div>
 
-            <div class="table-wrap">
+            <div class="table-wrap token-table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Wallet</th>
                     <th>Alpha score</th>
-                    <th>Sources</th>
+                    <th>Signals</th>
                     <th>Wallet status</th>
                     <th>Holdings USD</th>
                     <th>Trade volume USD</th>
@@ -343,7 +345,7 @@
               </table>
             </div>
 
-            <div class="secondary-grid">
+            <div class="secondary-grid token-secondary-grid">
               <section>
                 <h3>Top holders</h3>
                 <div class="message-box" id="token-holders-box">None.</div>

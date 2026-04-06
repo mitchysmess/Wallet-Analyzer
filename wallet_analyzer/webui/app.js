@@ -45,7 +45,9 @@ const elements = {
   tokenProgressCount: document.getElementById("token-progress-count"),
   tokenProgressFill: document.getElementById("token-progress-fill"),
   tokenProgressMessage: document.getElementById("token-progress-message"),
+  tokenHeroCard: document.getElementById("token-hero-card"),
   tokenSummaryGrid: document.getElementById("token-summary-grid"),
+  tokenQualityPanel: document.getElementById("token-quality-panel"),
   tokenClustersGrid: document.getElementById("token-clusters-grid"),
   tokenResultsBody: document.getElementById("token-results-body"),
   tokenHoldersBox: document.getElementById("token-holders-box"),
@@ -268,7 +270,7 @@ async function handleTokenAnalyze(event) {
     token_address: tokenControls.tokenAddress.value.trim(),
     profitability_duration: tokenControls.profitabilityDuration.value,
     holder_limit: Number(tokenControls.holderLimit.value || 30),
-    trade_limit: Number(tokenControls.tradeLimit.value || 200),
+    trade_limit: Number(tokenControls.tradeLimit.value || 50),
     early_buyer_limit: Number(tokenControls.earlyBuyerLimit.value || 20),
     trader_limit: Number(tokenControls.traderLimit.value || 20),
     candidate_limit: Number(tokenControls.candidateLimit.value || 40)
@@ -406,7 +408,9 @@ function renderWalletTable(rows) {
 
 function renderTokenResults(report) {
   elements.tokenResultsPanel.classList.remove("hidden");
+  renderTokenHero(report);
   renderTokenSummary(report);
+  renderTokenQuality(report.data_quality || {});
   renderTokenClusters(report.clusters || []);
   renderTokenTable(report.candidates || []);
   renderTokenHolders(report.top_holders || []);
@@ -414,15 +418,37 @@ function renderTokenResults(report) {
   setTokenDownloads(true);
 }
 
-function renderTokenSummary(report) {
+function renderTokenHero(report) {
   const token = report.token || {};
+  const symbol = token.symbol || shortWallet(token.address || "");
+  const title = token.name || "Unknown token";
+  const liquidity = formatMetricMoney(token.liquidity_usd);
+  const price = formatMetricMoney(token.price_usd);
+  const marketCap = formatMetricMoney(token.market_cap);
+  elements.tokenHeroCard.innerHTML = `
+    <div>
+      <p class="eyebrow">Token profile</p>
+      <h3>${escapeHtml(symbol)} <span class="hero-inline-muted">${escapeHtml(title)}</span></h3>
+      <p class="hero-copy tight">${escapeHtml(token.address || "")}</p>
+    </div>
+    <div class="token-hero-metrics">
+      <div><span>Price</span><strong>${escapeHtml(price)}</strong></div>
+      <div><span>Market Cap</span><strong>${escapeHtml(marketCap)}</strong></div>
+      <div><span>Liquidity</span><strong>${escapeHtml(liquidity)}</strong></div>
+      <div><span>Holders</span><strong>${escapeHtml(String(token.holders || 0))}</strong></div>
+    </div>
+  `;
+}
+
+function renderTokenSummary(report) {
   const summary = report.summary || {};
+  const quality = report.data_quality || {};
   const cards = [
-    { label: token.symbol || "Token", value: token.name || shortWallet(token.address || ""), note: token.address || "" },
     { label: "Candidates", value: summary.candidate_wallets || 0, note: `${summary.profitable_wallets || 0} profitable overall wallets` },
     { label: "Clusters", value: summary.clusters_found || 0, note: `${summary.borderline_wallets || 0} borderline overall wallets` },
-    { label: "Price", value: formatUsd(token.price_usd), note: `MC ${formatUsd(token.market_cap)}` },
-    { label: "Liquidity", value: formatUsd(token.liquidity_usd), note: `${token.holders || 0} holders reported` }
+    { label: "Trades Sampled", value: summary.trades_sampled || 0, note: "Birdeye-limited trade sample" },
+    { label: "Holder Coverage", value: `${quality.holders_with_usd_value || 0}/${summary.holders_sampled || 0}`, note: "holders with USD value" },
+    { label: "Trade Coverage", value: `${quality.trades_with_usd_value || 0}/${summary.trades_sampled || 0}`, note: "trades with USD value" }
   ];
   elements.tokenSummaryGrid.innerHTML = cards.map((card) => `
     <article class="summary-card">
@@ -433,13 +459,33 @@ function renderTokenSummary(report) {
   `).join("");
 }
 
+function renderTokenQuality(quality) {
+  const warnings = [];
+  if (!quality.overview_has_price) warnings.push("Token price unavailable from Birdeye overview payload.");
+  if (!quality.overview_has_market_cap) warnings.push("Market cap unavailable from Birdeye overview payload.");
+  if ((quality.candidates_with_holder_value || 0) === 0) warnings.push("Candidate holder USD values unavailable; holder signal is based on presence/share, not value.");
+  if ((quality.candidates_with_trade_volume || 0) === 0) warnings.push("Candidate trade USD values unavailable; trader signal leans on early participation and trade count.");
+
+  if (!warnings.length) {
+    elements.tokenQualityPanel.innerHTML = `<div class="quality-card quality-good"><strong>Data quality looks healthy.</strong><span>Core token overview, holder value, and trade value fields were present in the sampled Birdeye payloads.</span></div>`;
+    return;
+  }
+
+  elements.tokenQualityPanel.innerHTML = `
+    <div class="quality-card quality-warn">
+      <strong>Some Birdeye fields were unavailable.</strong>
+      <span>${escapeHtml(warnings.join(" "))}</span>
+    </div>
+  `;
+}
+
 function renderTokenClusters(clusters) {
   if (!clusters.length) {
     elements.tokenClustersGrid.innerHTML = `
       <article class="spotlight-card">
         <span class="metric-label">No strong funding clusters</span>
-        <strong>Each candidate wallet appears to have a distinct first funding source.</strong>
-        <span>That can still be useful if the highest-ranked wallets are independently strong.</span>
+        <strong>Candidate wallets look independent at the funding-source level.</strong>
+        <span>This can still be valuable when the top-ranked wallets are independently profitable or early.</span>
       </article>
     `;
     return;
@@ -462,16 +508,23 @@ function renderTokenTable(rows) {
   elements.tokenResultsBody.innerHTML = rows.map((row) => `
     <tr>
       <td class="wallet-cell">${escapeHtml(row.wallet)}</td>
-      <td class="numeric">${escapeHtml(String(row.alpha_score ?? "-"))}</td>
-      <td>${escapeHtml((row.source_tags || []).join(", "))}</td>
-      <td>${row.wallet_status ? `<span class="status-pill status-${escapeHtml(row.wallet_status)}">${escapeHtml(row.wallet_status.replaceAll("_", " "))}</span>` : "-"}</td>
-      <td class="numeric">${formatUsd(row.holder_value_usd)}</td>
-      <td class="numeric">${formatUsd(row.trade_volume_usd)}</td>
+      <td class="numeric alpha-score-cell">${escapeHtml(String(row.alpha_score ?? "-"))}</td>
+      <td>${renderSignalBadges(row.source_tags || [])}</td>
+      <td>${row.wallet_status ? `<span class="status-pill status-${escapeHtml(row.wallet_status)}">${escapeHtml(row.wallet_status.replaceAll("_", " "))}</span>` : `<span class="muted-inline">unavailable</span>`}</td>
+      <td class="numeric">${formatMetricMoney(row.holder_value_usd)}</td>
+      <td class="numeric">${formatMetricMoney(row.trade_volume_usd)}</td>
       <td class="numeric">${row.early_rank ?? "-"}</td>
-      <td>${row.funding_cluster_size ? `${escapeHtml(String(row.funding_cluster_size))} via ${escapeHtml(shortWallet(row.funding_source || ""))}` : "-"}</td>
+      <td>${row.funding_cluster_size ? `${escapeHtml(String(row.funding_cluster_size))} via ${escapeHtml(shortWallet(row.funding_source || ""))}` : `<span class="muted-inline">not linked</span>`}</td>
       <td>${escapeHtml((row.notes || []).join(" | "))}</td>
     </tr>
   `).join("");
+}
+
+function renderSignalBadges(tags) {
+  if (!tags.length) {
+    return `<span class="muted-inline">none</span>`;
+  }
+  return tags.map((tag) => `<span class="signal-badge signal-${escapeHtml(tag)}">${escapeHtml(tag.replaceAll("_", " "))}</span>`).join(" ");
 }
 
 function renderTokenHolders(rows) {
@@ -479,7 +532,7 @@ function renderTokenHolders(rows) {
     elements.tokenHoldersBox.textContent = "None.";
     return;
   }
-  elements.tokenHoldersBox.textContent = rows.map((row, index) => `${index + 1}. ${shortWallet(row.wallet)} | ${formatUsd(row.value_usd)} | ${Number(row.share_pct || 0).toFixed(2)}%`).join("\n");
+  elements.tokenHoldersBox.textContent = rows.map((row, index) => `${index + 1}. ${shortWallet(row.wallet)} | ${formatMetricMoney(row.value_usd)} | ${Number(row.share_pct || 0).toFixed(2)}%`).join("\n");
 }
 
 function renderMessageList(container, items, formatter) {
@@ -557,12 +610,7 @@ function formatPhaseLabel(phase, jobStatus) {
   if (jobStatus === "succeeded" || phase === "done") {
     return "Run complete";
   }
-  const labels = {
-    queue: "Queued",
-    prepare: "Preparing data",
-    screening: "Screening wallets",
-    details: "Loading details"
-  };
+  const labels = { queue: "Queued", prepare: "Preparing data", screening: "Screening wallets", details: "Loading details" };
   return labels[phase] || "Running";
 }
 
@@ -603,6 +651,14 @@ function shortWallet(wallet) {
 function formatUsd(value) {
   const number = Number(value || 0);
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(number);
+}
+
+function formatMetricMoney(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) {
+    return "Unavailable";
+  }
+  return formatUsd(number);
 }
 
 function formatPercent(value) {

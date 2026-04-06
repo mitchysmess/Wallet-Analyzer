@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import threading
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 from urllib import error, parse, request
 
 DEFAULT_BASE_URL = "https://public-api.birdeye.so"
@@ -44,21 +44,21 @@ class SummarySnapshot:
         cashflow = payload.get("cashflow_usd") or {}
         pnl = payload.get("pnl") or {}
         return cls(
-            unique_tokens=_to_int(payload.get("unique_tokens")),
-            total_buy=_to_int(counts.get("total_buy")),
-            total_sell=_to_int(counts.get("total_sell")),
-            total_trade=_to_int(counts.get("total_trade")),
-            total_win=_to_int(counts.get("total_win")),
-            total_loss=_to_int(counts.get("total_loss")),
-            win_rate=_to_float(counts.get("win_rate")),
-            total_invested=_to_float(cashflow.get("total_invested")),
-            total_sold=_to_float(cashflow.get("total_sold")),
-            current_value=_to_float(cashflow.get("current_value")),
-            realized_profit_usd=_to_float(pnl.get("realized_profit_usd")),
-            realized_profit_percent=_to_float(pnl.get("realized_profit_percent")),
-            unrealized_usd=_to_float(pnl.get("unrealized_usd")),
-            total_usd=_to_float(pnl.get("total_usd")),
-            avg_profit_per_trade_usd=_to_float(pnl.get("avg_profit_per_trade_usd")),
+            unique_tokens=_to_int(_pick_first(payload, "unique_tokens", "uniqueTokens", "token_num")),
+            total_buy=_to_int(_pick_first(counts, "total_buy", "totalBuy", "buy")),
+            total_sell=_to_int(_pick_first(counts, "total_sell", "totalSell", "sell")),
+            total_trade=_to_int(_pick_first(counts, "total_trade", "totalTrade", "trade", "trades")),
+            total_win=_to_int(_pick_first(counts, "total_win", "totalWin", "win")),
+            total_loss=_to_int(_pick_first(counts, "total_loss", "totalLoss", "loss")),
+            win_rate=_to_float(_pick_first(counts, "win_rate", "winRate")),
+            total_invested=_to_float(_pick_first(cashflow, "total_invested", "totalInvested", "invested")),
+            total_sold=_to_float(_pick_first(cashflow, "total_sold", "totalSold", "sold")),
+            current_value=_to_float(_pick_first(cashflow, "current_value", "currentValue", "holding_value")),
+            realized_profit_usd=_to_float(_pick_first(pnl, "realized_profit_usd", "realizedProfitUsd", "realized")),
+            realized_profit_percent=_to_float(_pick_first(pnl, "realized_profit_percent", "realizedProfitPercent", "realized_percent")),
+            unrealized_usd=_to_float(_pick_first(pnl, "unrealized_usd", "unrealizedUsd", "unrealized")),
+            total_usd=_to_float(_pick_first(pnl, "total_usd", "totalUsd", "pnl", "profit")),
+            avg_profit_per_trade_usd=_to_float(_pick_first(pnl, "avg_profit_per_trade_usd", "avgProfitPerTradeUsd")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -81,13 +81,13 @@ class TokenSnapshot:
         cashflow = payload.get("cashflow_usd") or {}
         pnl = payload.get("pnl") or {}
         return cls(
-            address=str(payload.get("address") or ""),
-            symbol=str(payload.get("symbol") or ""),
-            total_trade=_to_int(counts.get("total_trade")),
-            realized_profit_usd=_to_float(pnl.get("realized_profit_usd")),
-            unrealized_usd=_to_float(pnl.get("unrealized_usd")),
-            total_usd=_to_float(pnl.get("total_usd")),
-            current_value=_to_float(cashflow.get("current_value")),
+            address=str(_pick_first(payload, "address", "token_address", "mint") or ""),
+            symbol=str(_pick_first(payload, "symbol", "ticker") or ""),
+            total_trade=_to_int(_pick_first(counts, "total_trade", "totalTrade", "trades")),
+            realized_profit_usd=_to_float(_pick_first(pnl, "realized_profit_usd", "realizedProfitUsd", "realized")),
+            unrealized_usd=_to_float(_pick_first(pnl, "unrealized_usd", "unrealizedUsd", "unrealized")),
+            total_usd=_to_float(_pick_first(pnl, "total_usd", "totalUsd", "pnl", "profit")),
+            current_value=_to_float(_pick_first(cashflow, "current_value", "currentValue", "holding_value")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -126,13 +126,13 @@ class TokenOverview:
         payload = payload or {}
         return cls(
             address=address,
-            symbol=str(payload.get("symbol") or payload.get("ticker") or ""),
-            name=str(payload.get("name") or ""),
-            price=_to_float(payload.get("price") or payload.get("price_usd") or payload.get("value")),
-            market_cap=_to_float(payload.get("market_cap") or payload.get("mc") or payload.get("marketcap")),
-            liquidity=_to_float(payload.get("liquidity") or payload.get("liquidity_usd")),
-            holder_count=_to_int(payload.get("holder") or payload.get("holders") or payload.get("holder_count")),
-            logo_uri=str(payload.get("logoURI") or payload.get("logo_uri") or payload.get("logo") or ""),
+            symbol=str(_find_first(payload, "symbol", "ticker", "tokenSymbol") or ""),
+            name=str(_find_first(payload, "name", "tokenName") or ""),
+            price=_to_float(_find_first(payload, "price", "price_usd", "priceUsd", "value", "last_price")),
+            market_cap=_to_float(_find_first(payload, "market_cap", "marketcap", "marketCap", "mc", "fdv")),
+            liquidity=_to_float(_find_first(payload, "liquidity", "liquidity_usd", "liquidityUsd", "total_liquidity")),
+            holder_count=_to_int(_find_first(payload, "holder_count", "holders", "holder", "holderNumber")),
+            logo_uri=str(_find_first(payload, "logoURI", "logo_uri", "logo", "image_uri", "icon") or ""),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -148,12 +148,15 @@ class TokenHolderSnapshot:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "TokenHolderSnapshot":
-        return cls(
-            wallet=str(payload.get("owner") or payload.get("wallet") or payload.get("address") or ""),
-            amount=_to_float(payload.get("amount") or payload.get("ui_amount") or payload.get("balance")),
-            value_usd=_to_float(payload.get("value") or payload.get("value_usd") or payload.get("usd_value")),
-            share_pct=_normalize_percentage(payload.get("percentage") or payload.get("share") or payload.get("ratio")),
-        )
+        wallet = _extract_wallet_like(payload, ["owner", "wallet", "address", "holder", "user"])
+        amount = _to_float(_find_first(payload, "ui_amount", "uiAmount", "amount", "balance", "token_amount"))
+        value_usd = _to_float(_find_first(payload, "value_usd", "valueUsd", "usd_value", "usdValue", "value", "amount_usd"))
+        share_pct = _normalize_percentage(_find_first(payload, "percentage", "share", "ratio", "ownership"))
+        if value_usd <= 0 and amount > 0:
+            price = _to_float(_find_first(payload, "price_usd", "priceUsd", "price"))
+            if price > 0:
+                value_usd = amount * price
+        return cls(wallet=wallet, amount=amount, value_usd=value_usd, share_pct=share_pct)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -170,26 +173,29 @@ class TokenTradeSnapshot:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "TokenTradeSnapshot":
-        side = str(payload.get("side") or payload.get("tx_type") or payload.get("trade_type") or "").lower()
-        if side in {"swapbuy", "buy_swap"}:
+        side = str(_find_first(payload, "side", "tx_type", "trade_type", "type") or "").lower()
+        if side in {"swapbuy", "buy_swap", "buying"}:
             side = "buy"
-        elif side in {"swapsell", "sell_swap"}:
+        elif side in {"swapsell", "sell_swap", "selling"}:
             side = "sell"
+
+        wallet = _extract_wallet_like(
+            payload,
+            ["owner", "wallet", "user", "maker", "trader", "source_owner", "signer", "from_owner", "user_address"],
+        )
+        volume_usd = _to_float(_find_first(payload, "volume_usd", "volumeUsd", "amount_usd", "amountUsd", "usd", "value", "base_value"))
+        if volume_usd <= 0:
+            from_usd = _to_float(_find_first(payload.get("from") if isinstance(payload.get("from"), Mapping) else {}, "amount_usd", "amountUsd", "usd", "value"))
+            to_usd = _to_float(_find_first(payload.get("to") if isinstance(payload.get("to"), Mapping) else {}, "amount_usd", "amountUsd", "usd", "value"))
+            volume_usd = max(from_usd, to_usd)
+        token_amount = _to_float(_find_first(payload, "amount", "token_amount", "tokenAmount", "ui_amount", "uiAmount", "base_amount", "baseAmount"))
         return cls(
-            wallet=str(
-                payload.get("owner")
-                or payload.get("wallet")
-                or payload.get("user")
-                or payload.get("maker")
-                or payload.get("trader")
-                or payload.get("source_owner")
-                or ""
-            ),
+            wallet=wallet,
             side=side,
-            volume_usd=_to_float(payload.get("value") or payload.get("volume_usd") or payload.get("amount_usd") or payload.get("usd")),
-            token_amount=_to_float(payload.get("amount") or payload.get("token_amount") or payload.get("ui_amount")),
-            block_time=_to_optional_int(payload.get("blockUnixTime") or payload.get("block_time") or payload.get("unix_time")),
-            tx_hash=str(payload.get("txHash") or payload.get("tx_hash") or payload.get("signature") or ""),
+            volume_usd=volume_usd,
+            token_amount=token_amount,
+            block_time=_to_optional_int(_find_first(payload, "blockUnixTime", "block_time", "unix_time", "timestamp")),
+            tx_hash=str(_find_first(payload, "txHash", "tx_hash", "signature", "hash") or ""),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -208,10 +214,10 @@ class TokenFundingSnapshot:
     def from_payload(cls, wallet: str, payload: Mapping[str, Any]) -> "TokenFundingSnapshot":
         return cls(
             wallet=wallet,
-            funded_by=str(payload.get("sender") or payload.get("funded_by") or payload.get("source") or payload.get("from") or ""),
-            tx_hash=str(payload.get("tx_hash") or payload.get("txHash") or payload.get("signature") or ""),
-            block_time=_to_optional_int(payload.get("block_time") or payload.get("blockUnixTime") or payload.get("unix_time")),
-            token_address=str(payload.get("token_address") or payload.get("address") or ""),
+            funded_by=str(_find_first(payload, "sender", "funded_by", "source", "from") or ""),
+            tx_hash=str(_find_first(payload, "tx_hash", "txHash", "signature", "hash") or ""),
+            block_time=_to_optional_int(_find_first(payload, "block_time", "blockUnixTime", "unix_time", "timestamp")),
+            token_address=str(_find_first(payload, "token_address", "address", "mint") or ""),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -241,23 +247,12 @@ class BirdeyeClient:
         self._next_request_at = 0.0
 
     def fetch_summary(self, wallet: str, *, duration: str = "90d") -> SummarySnapshot:
-        payload = self._request_json(
-            "GET",
-            "/wallet/v2/pnl/summary",
-            query={"wallet": wallet, "duration": duration},
-        )
+        payload = self._request_json("GET", "/wallet/v2/pnl/summary", query={"wallet": wallet, "duration": duration})
         data = payload.get("data") or {}
         summary_payload = data.get("summary") or data
         return SummarySnapshot.from_summary_payload(summary_payload)
 
-    def fetch_details(
-        self,
-        wallet: str,
-        *,
-        duration: str = "90d",
-        limit: int = 10,
-        offset: int = 0,
-    ) -> WalletDetails:
+    def fetch_details(self, wallet: str, *, duration: str = "90d", limit: int = 10, offset: int = 0) -> WalletDetails:
         payload = self._request_json(
             "POST",
             "/wallet/v2/pnl/details",
@@ -271,13 +266,8 @@ class BirdeyeClient:
             },
         )
         data = payload.get("data") or {}
-        tokens = [TokenSnapshot.from_payload(item) for item in data.get("tokens") or []]
-        return WalletDetails(
-            wallet=wallet,
-            meta=dict(data.get("meta") or {}),
-            summary=SummarySnapshot.from_summary_payload(data.get("summary")),
-            tokens=tokens,
-        )
+        tokens = [TokenSnapshot.from_payload(item) for item in _extract_item_list(data)]
+        return WalletDetails(wallet=wallet, meta=dict(data.get("meta") or {}), summary=SummarySnapshot.from_summary_payload(data.get("summary")), tokens=tokens)
 
     def fetch_token_overview(self, token_address: str) -> TokenOverview:
         payload = self._request_json("GET", "/defi/token_overview", query={"address": token_address})
@@ -288,20 +278,13 @@ class BirdeyeClient:
         payload = self._request_json(
             "GET",
             "/defi/v3/token/holder",
-            query={
-                "address": token_address,
-                "limit": _clean_int(limit, minimum=1, maximum=100),
-                "offset": _clean_int(offset, minimum=0),
-            },
+            query={"address": token_address, "limit": _clean_int(limit, minimum=1, maximum=100), "offset": _clean_int(offset, minimum=0)},
         )
-        data = payload.get("data") or {}
-        items = data.get("items") or data.get("holders") or data.get("list") or data
-        if isinstance(items, list):
-            return [TokenHolderSnapshot.from_payload(item) for item in items if isinstance(item, Mapping)]
-        return []
+        items = _extract_item_list(payload.get("data") or {})
+        return [TokenHolderSnapshot.from_payload(item) for item in items if isinstance(item, Mapping)]
 
-    def fetch_token_trades(self, token_address: str, *, limit: int = 200, offset: int = 0) -> list[TokenTradeSnapshot]:
-        cleaned_limit = _clean_int(limit, minimum=1, maximum=500)
+    def fetch_token_trades(self, token_address: str, *, limit: int = 50, offset: int = 0) -> list[TokenTradeSnapshot]:
+        cleaned_limit = _clean_int(limit, minimum=1, maximum=50)
         cleaned_offset = _clean_int(offset, minimum=0)
         try:
             payload = self._request_json(
@@ -315,15 +298,8 @@ class BirdeyeClient:
                 "/defi/txs/token",
                 query={"address": token_address, "limit": cleaned_limit, "offset": cleaned_offset, "sort_type": "asc"},
             )
-        data = payload.get("data") or {}
-        items = data.get("items") or data.get("txs") or data.get("history") or data
-        if isinstance(items, list):
-            return [
-                trade
-                for trade in (TokenTradeSnapshot.from_payload(item) for item in items if isinstance(item, Mapping))
-                if trade.wallet
-            ]
-        return []
+        items = _extract_item_list(payload.get("data") or {})
+        return [trade for trade in (TokenTradeSnapshot.from_payload(item) for item in items if isinstance(item, Mapping)) if trade.wallet]
 
     def fetch_wallet_first_funded(self, wallets: list[str], *, token_address: str | None = None) -> list[TokenFundingSnapshot]:
         if not wallets:
@@ -342,27 +318,16 @@ class BirdeyeClient:
                     rows.append(TokenFundingSnapshot.from_payload(str(wallet), entry[0]))
         elif isinstance(data, list):
             for entry in data:
-                if not isinstance(entry, Mapping):
-                    continue
-                wallet = str(entry.get("wallet") or entry.get("address") or "")
-                if wallet:
-                    rows.append(TokenFundingSnapshot.from_payload(wallet, entry))
+                if isinstance(entry, Mapping):
+                    wallet = str(_pick_first(entry, "wallet", "address") or "")
+                    if wallet:
+                        rows.append(TokenFundingSnapshot.from_payload(wallet, entry))
         return rows
 
-    def _request_json(
-        self,
-        method: str,
-        path: str,
-        *,
-        query: Mapping[str, Any] | None = None,
-        body: Mapping[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    def _request_json(self, method: str, path: str, *, query: Mapping[str, Any] | None = None, body: Mapping[str, Any] | None = None) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         if query:
-            encoded_query = parse.urlencode(
-                {key: _normalize_query_value(value) for key, value in query.items() if value is not None},
-                doseq=True,
-            )
+            encoded_query = parse.urlencode({key: _normalize_query_value(value) for key, value in query.items() if value is not None}, doseq=True)
             url = f"{url}?{encoded_query}"
 
         payload = None
@@ -406,9 +371,7 @@ class BirdeyeClient:
     def _wait_for_request_slot(self) -> None:
         if self.min_request_interval <= 0:
             return
-
         while True:
-            wait_seconds = 0.0
             with self._rate_limit_lock:
                 now = time.monotonic()
                 wait_seconds = self._next_request_at - now
@@ -452,6 +415,17 @@ def _parse_retry_after_seconds(value: str | None) -> float:
         return 0.0
 
 
+def _extract_item_list(data: Any) -> list[Mapping[str, Any]]:
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, Mapping)]
+    if isinstance(data, Mapping):
+        for key in ("items", "holders", "list", "txs", "history", "transactions", "data"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, Mapping)]
+    return []
+
+
 def _normalize_percentage(value: Any) -> float:
     number = _to_float(value)
     if number > 1:
@@ -465,10 +439,46 @@ def _normalize_query_value(value: Any) -> str:
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):
-        if value.is_integer():
-            return str(int(value))
-        return format(value, "g")
+        return str(int(value)) if value.is_integer() else format(value, "g")
     return str(value)
+
+
+def _extract_wallet_like(payload: Mapping[str, Any], keys: Sequence[str]) -> str:
+    direct = _find_first(payload, *keys)
+    if isinstance(direct, str) and 32 <= len(direct.strip()) <= 44:
+        return direct.strip()
+    for nested_key in ("owner", "wallet", "user", "trader", "maker", "from", "to"):
+        nested = payload.get(nested_key)
+        if isinstance(nested, Mapping):
+            nested_value = _find_first(nested, *keys, "address", "wallet", "owner", "user")
+            if isinstance(nested_value, str) and 32 <= len(nested_value.strip()) <= 44:
+                return nested_value.strip()
+    return str(direct or "")
+
+
+def _find_first(payload: Any, *keys: str) -> Any:
+    keyset = {key.lower() for key in keys}
+    for current_key, value in _walk_mapping(payload):
+        if current_key.lower() in keyset and value not in (None, ""):
+            return value
+    return None
+
+
+def _pick_first(payload: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload and payload[key] not in (None, ""):
+            return payload[key]
+    return None
+
+
+def _walk_mapping(value: Any) -> Iterable[tuple[str, Any]]:
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            yield str(key), nested
+            yield from _walk_mapping(nested)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_mapping(item)
 
 
 def _clean_int(value: Any, *, minimum: int | None = None, maximum: int | None = None) -> int:
@@ -505,3 +515,4 @@ def _to_optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return int(float(value))
+
