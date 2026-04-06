@@ -1,0 +1,156 @@
+﻿# Solana Wallet Analyzer
+
+This project screens a bulk list of Solana wallet addresses and tells you which ones look like profitable traders.
+
+It uses Birdeye's wallet PnL endpoints instead of raw on-chain parsing, which makes it much faster and more practical for bulk screening.
+
+## What it does
+
+- Accepts a `.txt` or `.csv` file of Solana wallet addresses
+- Validates and deduplicates the wallets before calling the API
+- Pulls wallet-level PnL metrics from Birdeye
+- Scores each wallet with configurable thresholds
+- Classifies wallets as `profitable`, `borderline`, `not_profitable`, or `insufficient_history`
+- Writes a ranked CSV report plus a richer JSON report
+- Includes a small local web UI for drag-and-drop CSV uploads
+- Optionally fetches token-level details for shortlisted wallets
+
+## Requirements
+
+- Python 3.11+
+- A Birdeye API key in `BIRDEYE_API_KEY`
+
+## Install
+
+```powershell
+python -m pip install -e .
+```
+
+## Web UI
+
+Start the local frontend:
+
+```powershell
+python -m wallet_analyzer.webapp
+```
+
+Or, after installing the editable package:
+
+```powershell
+wallet-analyzer-web
+```
+
+Then open `http://127.0.0.1:8765` in your browser.
+
+The UI lets you:
+
+- Drop a CSV or TXT file
+- Override the CSV address column if needed
+- Tune the duration and thresholds
+- Download the resulting CSV and JSON reports
+
+If `BIRDEYE_API_KEY` is already set in the terminal where you start the server, the frontend will use it automatically.
+
+## Input formats
+
+### Text file
+
+One wallet per line:
+
+```text
+7xKXtg2CW4f7mnu9vSo8p7uMsuK1B89Yv5Trs7X52X58
+8QfJ3vLhPZvtY2z9w4M8u6a5QH2nJHk2R4x5DwRj7f4a
+```
+
+Blank lines and lines starting with `#` are ignored.
+
+### CSV file
+
+Use a column like `wallet`, `address`, `wallet_address`, `owner`, or pass `--address-column`.
+
+Example:
+
+```csv
+wallet,label
+7xKXtg2CW4f7mnu9vSo8p7uMsuK1B89Yv5Trs7X52X58,alpha
+8QfJ3vLhPZvtY2z9w4M8u6a5QH2nJHk2R4x5DwRj7f4a,beta
+```
+
+## CLI usage
+
+Set your API key:
+
+```powershell
+$env:BIRDEYE_API_KEY = "your_api_key_here"
+```
+
+Run a screen over the last 90 days:
+
+```powershell
+wallet-analyzer .\wallets.csv --duration 90d
+```
+
+Write reports into a custom directory:
+
+```powershell
+wallet-analyzer .\wallets.txt --output-dir .\reports\run-01
+```
+
+Fetch token-level details for wallets that screen as profitable:
+
+```powershell
+wallet-analyzer .\wallets.csv --details profitable --top-tokens 5
+```
+
+Use stricter thresholds:
+
+```powershell
+wallet-analyzer .\wallets.csv `
+  --min-total-trades 25 `
+  --min-total-invested-usd 2500 `
+  --min-win-rate 0.55 `
+  --min-realized-profit-usd 500 `
+  --min-total-profit-usd 1000
+```
+
+## Default scoring logic
+
+By default, a wallet is marked `profitable` when it has enough trading history and passes all of these checks:
+
+- At least `15` trades
+- At least `3` unique tokens traded
+- At least `$1,000` total invested
+- At least `50%` win rate
+- At least `$250` realized profit
+- At least `$500` total profit
+
+Wallets with too little history or too little deployed capital are marked `insufficient_history`.
+Wallets that show some positive signals but miss one or more core thresholds are marked `borderline`.
+
+These defaults are only a baseline. You can tighten or loosen them with CLI flags or in the web UI.
+
+## Outputs
+
+The CLI writes:
+
+- `wallet_screen.csv`: flat table you can sort or filter in Excel
+- `wallet_screen.json`: full report including invalid rows and request errors
+- `wallet_details.json`: optional token-level breakdowns when `--details` is enabled
+
+Important CSV columns:
+
+- `status`
+- `score`
+- `win_rate_pct`
+- `total_invested_usd`
+- `realized_profit_usd`
+- `unrealized_usd`
+- `total_profit_usd`
+- `estimated_total_roi_pct`
+- `top_tokens`
+
+## Notes
+
+- The tool uses a browser-style `User-Agent` header because Birdeye may block the default Python client signature.
+- The default analysis window is `90d` because recent performance is usually more useful for trader screening than all-time history.
+- The tool currently targets Solana through Birdeye's `x-chain: solana` endpoints.

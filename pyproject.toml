@@ -1,0 +1,24 @@
+﻿[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wallet-analyzer"
+version = "0.1.0"
+description = "Bulk Solana wallet profitability screening using Birdeye wallet PnL APIs."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "OpenAI Codex" }
+]
+dependencies = []
+
+[project.scripts]
+wallet-analyzer = "wallet_analyzer.cli:main"
+wallet-analyzer-web = "wallet_analyzer.webapp:main"
+
+[tool.setuptools.packages.find]
+include = ["wallet_analyzer*"]
+
+[tool.setuptools.package-data]
+wallet_analyzer = ["webui/*"]

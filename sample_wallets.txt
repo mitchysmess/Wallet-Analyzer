@@ -1,0 +1,3 @@
+# Replace these with real Solana wallets before running.
+7xKXtg2CW4f7mnu9vSo8p7uMsuK1B89Yv5Trs7X52X58
+8QfJ3vLhPZvtY2z9w4M8u6a5QH2nJHk2R4x5DwRj7f4a
