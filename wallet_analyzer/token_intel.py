@@ -129,14 +129,14 @@ def analyze_token_address(
         raise ValueError("Birdeye returned no candidate wallets for that token.")
 
     _emit_progress(progress_callback, phase="prepare", completed=3, total=5, message=f"Enriching {len(candidates)} candidate wallets with first funding sources.")
-    _apply_funding_clusters(candidates, client, token_address, resolved_options)
+    funding_warning = _apply_funding_clusters(candidates, client, token_address, resolved_options)
 
     _emit_progress(progress_callback, phase="prepare", completed=4, total=5, message=f"Screening {len(candidates)} candidate wallets for profitability.")
     _apply_profitability(candidates, client, resolved_options, progress_callback)
 
     _score_candidates(candidates)
     ordered_candidates = sorted(candidates.values(), key=lambda item: (-item.alpha_score, item.early_rank or 999999, -item.trade_volume_usd))
-    report_payload = _build_report_payload(token_address, overview, holders, trades, ordered_candidates, resolved_options)
+    report_payload = _build_report_payload(token_address, overview, holders, trades, ordered_candidates, resolved_options, funding_warning)
 
     _emit_progress(
         progress_callback,
@@ -236,12 +236,18 @@ def _apply_funding_clusters(
     client: BirdeyeClient,
     token_address: str,
     options: TokenIntelOptions,
-) -> None:
+) -> str | None:
     wallets = list(candidates)
     funding_entries: list[TokenFundingSnapshot] = []
-    for start in range(0, len(wallets), options.funding_batch_size):
-        batch = wallets[start : start + options.funding_batch_size]
-        funding_entries.extend(client.fetch_wallet_first_funded(batch, token_address=token_address))
+    try:
+        for start in range(0, len(wallets), options.funding_batch_size):
+            batch = wallets[start : start + options.funding_batch_size]
+            funding_entries.extend(client.fetch_wallet_first_funded(batch, token_address=token_address))
+    except BirdeyeAPIError as exc:
+        warning = f"Funding cluster detection skipped because Birdeye denied access to first-funded data: {exc}"
+        for candidate in candidates.values():
+            candidate.notes.append("Funding cluster detection unavailable for this API key/package.")
+        return warning
 
     by_wallet = {entry.wallet: entry for entry in funding_entries if entry.wallet}
     cluster_counter = Counter(entry.funded_by for entry in funding_entries if entry.funded_by)
@@ -256,6 +262,8 @@ def _apply_funding_clusters(
         candidate.funding_cluster_size = cluster_counter.get(funding.funded_by, 0)
         if candidate.funding_cluster_size >= 2:
             candidate.notes.append(f"Shares first funding source with {candidate.funding_cluster_size - 1} other candidate wallet(s).")
+
+    return None
 
 
 def _apply_profitability(
@@ -354,6 +362,7 @@ def _build_report_payload(
     trades: list[TokenTradeSnapshot],
     candidates: list[CandidateWallet],
     options: TokenIntelOptions,
+    funding_warning: str | None,
 ) -> dict[str, Any]:
     status_counts = Counter(
         candidate.profitability.status
@@ -372,6 +381,14 @@ def _build_report_payload(
                 "wallets": [candidate.wallet for candidate in candidates if candidate.funding_source == funded_by],
             }
         )
+
+    analysis_notes = [
+        "Early buyers are inferred from the earliest sampled token trades returned by Birdeye, not from full chain reconstruction.",
+        "Cluster wallets are inferred from shared first-funding sources returned by Birdeye's wallet first-funded endpoint.",
+        "Named KOL attribution is not included unless you later provide your own wallet label list.",
+    ]
+    if funding_warning:
+        analysis_notes.append(funding_warning)
 
     return {
         "generated_at": _utc_now(),
@@ -404,11 +421,7 @@ def _build_report_payload(
         "top_holders": [holder.to_dict() for holder in holders[:10]],
         "clusters": cluster_rows,
         "candidates": [candidate.to_dict() for candidate in candidates],
-        "analysis_notes": [
-            "Early buyers are inferred from the earliest sampled token trades returned by Birdeye, not from full chain reconstruction.",
-            "Cluster wallets are inferred from shared first-funding sources returned by Birdeye's wallet first-funded endpoint.",
-            "Named KOL attribution is not included unless you later provide your own wallet label list.",
-        ],
+        "analysis_notes": analysis_notes,
     }
 
 

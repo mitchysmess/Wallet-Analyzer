@@ -2,7 +2,7 @@
 from unittest.mock import patch
 
 from wallet_analyzer.analysis import ProfitabilityThresholds
-from wallet_analyzer.birdeye import SummarySnapshot, TokenFundingSnapshot, TokenHolderSnapshot, TokenOverview, TokenTradeSnapshot
+from wallet_analyzer.birdeye import BirdeyeAPIError, SummarySnapshot, TokenFundingSnapshot, TokenHolderSnapshot, TokenOverview, TokenTradeSnapshot
 from wallet_analyzer.token_intel import TokenIntelOptions, analyze_token_address
 
 TOKEN_ADDRESS = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
@@ -64,6 +64,23 @@ class TokenIntelTests(unittest.TestCase):
         self.assertIn("early_buyer", top_candidate["source_tags"])
         self.assertEqual(top_candidate["wallet_status"], "profitable")
         self.assertIn(WALLET_ONE, run.csv_text)
+
+    def test_analyze_token_address_skips_funding_clusters_when_endpoint_is_unavailable(self) -> None:
+        options = TokenIntelOptions(candidate_limit=10, wallet_workers=1)
+
+        with patch("wallet_analyzer.token_intel.BirdeyeClient") as mock_client_cls:
+            mock_client = mock_client_cls.return_value
+            mock_client.fetch_token_overview.return_value = TokenOverview(address=TOKEN_ADDRESS, symbol="TEST", name="Test Token")
+            mock_client.fetch_token_holders.return_value = [TokenHolderSnapshot(wallet=WALLET_ONE, amount=1000, value_usd=5000, share_pct=2.5)]
+            mock_client.fetch_token_trades.return_value = [TokenTradeSnapshot(wallet=WALLET_ONE, side="buy", volume_usd=1200, block_time=1700000000)]
+            mock_client.fetch_wallet_first_funded.side_effect = BirdeyeAPIError("HTTP 401")
+            mock_client.fetch_summary.return_value = SummarySnapshot(unique_tokens=5, total_trade=40, total_invested=5000, win_rate=0.7, realized_profit_usd=1600, total_usd=2200)
+
+            run = analyze_token_address(TOKEN_ADDRESS, "test-key", options=options)
+
+        self.assertEqual(run.report_payload["summary"]["clusters_found"], 0)
+        self.assertTrue(any("Funding cluster detection skipped" in note for note in run.report_payload["analysis_notes"]))
+        self.assertTrue(any("Funding cluster detection unavailable" in note for note in run.report_payload["candidates"][0]["notes"]))
 
 
 if __name__ == "__main__":
