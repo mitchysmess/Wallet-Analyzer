@@ -266,8 +266,8 @@ class BirdeyeClient:
                 "duration": duration,
                 "sort_by": "last_trade",
                 "sort_type": "desc",
-                "limit": limit,
-                "offset": offset,
+                "limit": _clean_int(limit, minimum=1, maximum=100),
+                "offset": _clean_int(offset, minimum=0),
             },
         )
         data = payload.get("data") or {}
@@ -288,7 +288,11 @@ class BirdeyeClient:
         payload = self._request_json(
             "GET",
             "/defi/v3/token/holder",
-            query={"address": token_address, "limit": limit, "offset": offset},
+            query={
+                "address": token_address,
+                "limit": _clean_int(limit, minimum=1, maximum=100),
+                "offset": _clean_int(offset, minimum=0),
+            },
         )
         data = payload.get("data") or {}
         items = data.get("items") or data.get("holders") or data.get("list") or data
@@ -297,17 +301,19 @@ class BirdeyeClient:
         return []
 
     def fetch_token_trades(self, token_address: str, *, limit: int = 200, offset: int = 0) -> list[TokenTradeSnapshot]:
+        cleaned_limit = _clean_int(limit, minimum=1, maximum=500)
+        cleaned_offset = _clean_int(offset, minimum=0)
         try:
             payload = self._request_json(
                 "GET",
                 "/defi/v3/token/txs",
-                query={"address": token_address, "limit": limit, "offset": offset, "sort_type": "asc"},
+                query={"address": token_address, "limit": cleaned_limit, "offset": cleaned_offset, "sort_type": "asc"},
             )
         except BirdeyeAPIError:
             payload = self._request_json(
                 "GET",
                 "/defi/txs/token",
-                query={"address": token_address, "limit": limit, "offset": offset, "sort_type": "asc"},
+                query={"address": token_address, "limit": cleaned_limit, "offset": cleaned_offset, "sort_type": "asc"},
             )
         data = payload.get("data") or {}
         items = data.get("items") or data.get("txs") or data.get("history") or data
@@ -354,7 +360,7 @@ class BirdeyeClient:
         url = f"{self.base_url}{path}"
         if query:
             encoded_query = parse.urlencode(
-                {key: value for key, value in query.items() if value is not None},
+                {key: _normalize_query_value(value) for key, value in query.items() if value is not None},
                 doseq=True,
             )
             url = f"{url}?{encoded_query}"
@@ -451,6 +457,27 @@ def _normalize_percentage(value: Any) -> float:
     if number > 1:
         return number
     return number * 100 if 0 < number <= 1 else 0.0
+
+
+def _normalize_query_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return format(value, "g")
+    return str(value)
+
+
+def _clean_int(value: Any, *, minimum: int | None = None, maximum: int | None = None) -> int:
+    number = _to_int(value)
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(maximum, number)
+    return number
 
 
 def _to_float(value: Any) -> float:
