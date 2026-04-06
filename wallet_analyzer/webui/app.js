@@ -1,43 +1,67 @@
 ﻿const state = {
-  file: null,
-  fileContent: "",
-  latestResponse: null,
-  latestDetails: null,
-  downloadPrefix: "wallet-screen",
-  activeJobId: null,
+  activeTab: "wallet",
+  walletFile: null,
+  walletFileContent: "",
+  walletResponse: null,
+  walletDetails: null,
+  walletDownloadPrefix: "wallet-screen",
+  tokenResponse: null,
+  tokenDownloadPrefix: "token-intel",
   pollToken: 0
 };
 
-const fileInput = document.getElementById("file-input");
-const dropzone = document.getElementById("dropzone");
-const fileMeta = document.getElementById("file-meta");
-const analyzeForm = document.getElementById("analyze-form");
-const analyzeButton = document.getElementById("analyze-button");
-const statusText = document.getElementById("status-text");
-const resultsPanel = document.getElementById("results-panel");
-const summaryGrid = document.getElementById("summary-grid");
-const spotlightGrid = document.getElementById("spotlight-grid");
-const resultsBody = document.getElementById("results-body");
-const invalidRowsBox = document.getElementById("invalid-rows");
-const requestErrorsBox = document.getElementById("request-errors");
-const serverStatus = document.getElementById("server-status");
-const downloadCsvButton = document.getElementById("download-csv");
-const downloadJsonButton = document.getElementById("download-json");
-const downloadDetailsButton = document.getElementById("download-details");
-const progressPanel = document.getElementById("progress-panel");
-const progressPhase = document.getElementById("progress-phase");
-const progressCount = document.getElementById("progress-count");
-const progressFill = document.getElementById("progress-fill");
-const progressMessage = document.getElementById("progress-message");
+const elements = {
+  sharedApiKey: document.getElementById("shared-api-key"),
+  serverStatus: document.getElementById("server-status"),
+  tabButtons: document.querySelectorAll(".tab-button"),
+  walletPanel: document.getElementById("panel-wallet"),
+  tokenPanel: document.getElementById("panel-token"),
+  fileInput: document.getElementById("file-input"),
+  dropzone: document.getElementById("dropzone"),
+  fileMeta: document.getElementById("file-meta"),
+  walletForm: document.getElementById("wallet-form"),
+  tokenForm: document.getElementById("token-form"),
+  walletAnalyzeButton: document.getElementById("wallet-analyze-button"),
+  tokenAnalyzeButton: document.getElementById("token-analyze-button"),
+  walletStatusText: document.getElementById("wallet-status-text"),
+  tokenStatusText: document.getElementById("token-status-text"),
+  walletResultsPanel: document.getElementById("wallet-results-panel"),
+  tokenResultsPanel: document.getElementById("token-results-panel"),
+  summaryGrid: document.getElementById("summary-grid"),
+  spotlightGrid: document.getElementById("spotlight-grid"),
+  resultsBody: document.getElementById("results-body"),
+  invalidRowsBox: document.getElementById("invalid-rows"),
+  requestErrorsBox: document.getElementById("request-errors"),
+  downloadCsvButton: document.getElementById("download-csv"),
+  downloadJsonButton: document.getElementById("download-json"),
+  downloadDetailsButton: document.getElementById("download-details"),
+  walletProgressPanel: document.getElementById("wallet-progress-panel"),
+  walletProgressPhase: document.getElementById("wallet-progress-phase"),
+  walletProgressCount: document.getElementById("wallet-progress-count"),
+  walletProgressFill: document.getElementById("wallet-progress-fill"),
+  walletProgressMessage: document.getElementById("wallet-progress-message"),
+  tokenProgressPanel: document.getElementById("token-progress-panel"),
+  tokenProgressPhase: document.getElementById("token-progress-phase"),
+  tokenProgressCount: document.getElementById("token-progress-count"),
+  tokenProgressFill: document.getElementById("token-progress-fill"),
+  tokenProgressMessage: document.getElementById("token-progress-message"),
+  tokenSummaryGrid: document.getElementById("token-summary-grid"),
+  tokenClustersGrid: document.getElementById("token-clusters-grid"),
+  tokenResultsBody: document.getElementById("token-results-body"),
+  tokenHoldersBox: document.getElementById("token-holders-box"),
+  tokenNotesBox: document.getElementById("token-notes-box"),
+  downloadTokenCsvButton: document.getElementById("download-token-csv"),
+  downloadTokenJsonButton: document.getElementById("download-token-json")
+};
 
-const controls = {
-  apiKey: document.getElementById("api-key"),
+const walletControls = {
   addressColumn: document.getElementById("address-column"),
   duration: document.getElementById("duration"),
   details: document.getElementById("details"),
   workers: document.getElementById("workers"),
   topTokens: document.getElementById("top-tokens"),
   retryPasses: document.getElementById("retry-passes"),
+  timeout: document.getElementById("wallet-timeout"),
   minTotalTrades: document.getElementById("min-total-trades"),
   minUniqueTokens: document.getElementById("min-unique-tokens"),
   minTotalInvestedUsd: document.getElementById("min-total-invested-usd"),
@@ -46,62 +70,93 @@ const controls = {
   minTotalProfitUsd: document.getElementById("min-total-profit-usd")
 };
 
+const tokenControls = {
+  tokenAddress: document.getElementById("token-address"),
+  profitabilityDuration: document.getElementById("token-duration"),
+  holderLimit: document.getElementById("holder-limit"),
+  tradeLimit: document.getElementById("trade-limit"),
+  earlyBuyerLimit: document.getElementById("early-buyer-limit"),
+  traderLimit: document.getElementById("trader-limit"),
+  candidateLimit: document.getElementById("candidate-limit")
+};
+
 initialize();
 
 function initialize() {
-  resetProgressPanel();
-  setDownloadButtons(false);
+  resetProgress(elements.walletProgressPanel, elements.walletProgressPhase, elements.walletProgressCount, elements.walletProgressFill, elements.walletProgressMessage);
+  resetProgress(elements.tokenProgressPanel, elements.tokenProgressPhase, elements.tokenProgressCount, elements.tokenProgressFill, elements.tokenProgressMessage);
+  setWalletDownloads(false);
+  setTokenDownloads(false);
 
-  fileInput.addEventListener("change", async (event) => {
+  elements.tabButtons.forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+  });
+
+  elements.fileInput.addEventListener("change", async (event) => {
     const [file] = event.target.files;
-    await loadFile(file);
+    await loadWalletFile(file);
   });
 
   ["dragenter", "dragover"].forEach((eventName) => {
-    dropzone.addEventListener(eventName, (event) => {
+    elements.dropzone.addEventListener(eventName, (event) => {
       event.preventDefault();
-      dropzone.classList.add("dragover");
+      elements.dropzone.classList.add("dragover");
     });
   });
 
   ["dragleave", "drop"].forEach((eventName) => {
-    dropzone.addEventListener(eventName, (event) => {
+    elements.dropzone.addEventListener(eventName, (event) => {
       event.preventDefault();
-      dropzone.classList.remove("dragover");
+      elements.dropzone.classList.remove("dragover");
     });
   });
 
-  dropzone.addEventListener("drop", async (event) => {
+  elements.dropzone.addEventListener("drop", async (event) => {
     const [file] = event.dataTransfer.files;
-    await loadFile(file);
+    await loadWalletFile(file);
   });
 
-  analyzeForm.addEventListener("submit", handleAnalyze);
-  downloadCsvButton.addEventListener("click", () => {
-    if (state.latestResponse?.csv_content) {
-      downloadBlob(`${state.downloadPrefix}-screen.csv`, state.latestResponse.csv_content, "text/csv;charset=utf-8");
+  elements.walletForm.addEventListener("submit", handleWalletAnalyze);
+  elements.tokenForm.addEventListener("submit", handleTokenAnalyze);
+
+  elements.downloadCsvButton.addEventListener("click", () => {
+    if (state.walletResponse?.csv_content) {
+      downloadBlob(`${state.walletDownloadPrefix}-screen.csv`, state.walletResponse.csv_content, "text/csv;charset=utf-8");
     }
   });
-  downloadJsonButton.addEventListener("click", () => {
-    if (state.latestResponse?.report) {
-      downloadBlob(
-        `${state.downloadPrefix}-screen.json`,
-        JSON.stringify(state.latestResponse.report, null, 2),
-        "application/json;charset=utf-8"
-      );
+  elements.downloadJsonButton.addEventListener("click", () => {
+    if (state.walletResponse?.report) {
+      downloadBlob(`${state.walletDownloadPrefix}-screen.json`, JSON.stringify(state.walletResponse.report, null, 2), "application/json;charset=utf-8");
     }
   });
-  downloadDetailsButton.addEventListener("click", () => {
-    if (state.latestDetails) {
-      downloadBlob(
-        `${state.downloadPrefix}-details.json`,
-        JSON.stringify(state.latestDetails, null, 2),
-        "application/json;charset=utf-8"
-      );
+  elements.downloadDetailsButton.addEventListener("click", () => {
+    if (state.walletDetails) {
+      downloadBlob(`${state.walletDownloadPrefix}-details.json`, JSON.stringify(state.walletDetails, null, 2), "application/json;charset=utf-8");
+    }
+  });
+  elements.downloadTokenCsvButton.addEventListener("click", () => {
+    if (state.tokenResponse?.csv_content) {
+      downloadBlob(`${state.tokenDownloadPrefix}.csv`, state.tokenResponse.csv_content, "text/csv;charset=utf-8");
+    }
+  });
+  elements.downloadTokenJsonButton.addEventListener("click", () => {
+    if (state.tokenResponse?.report) {
+      downloadBlob(`${state.tokenDownloadPrefix}.json`, JSON.stringify(state.tokenResponse.report, null, 2), "application/json;charset=utf-8");
     }
   });
 
   hydrateServerStatus();
+}
+
+function setActiveTab(tab) {
+  state.activeTab = tab;
+  elements.tabButtons.forEach((button) => {
+    const isActive = button.dataset.tab === tab;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+  elements.walletPanel.classList.toggle("hidden", tab !== "wallet");
+  elements.tokenPanel.classList.toggle("hidden", tab !== "token");
 }
 
 async function hydrateServerStatus() {
@@ -109,168 +164,183 @@ async function hydrateServerStatus() {
     const response = await fetch("/api/health");
     const payload = await response.json();
     if (payload.has_default_api_key) {
-      serverStatus.textContent = "Server is ready and already has a Birdeye API key configured.";
-      serverStatus.className = "server-status good";
+      elements.serverStatus.textContent = "Server is ready and already has a Birdeye API key configured.";
+      elements.serverStatus.className = "server-status good";
     } else {
-      serverStatus.textContent = "Server is running, but no default Birdeye API key is configured yet. You can still paste one into the field above.";
-      serverStatus.className = "server-status warn";
+      elements.serverStatus.textContent = "Server is running, but no default Birdeye API key is configured yet. You can still paste one into the field above.";
+      elements.serverStatus.className = "server-status warn";
     }
   } catch (error) {
-    serverStatus.textContent = "Could not reach the local API server. Make sure wallet-analyzer-web is running.";
-    serverStatus.className = "server-status warn";
+    elements.serverStatus.textContent = "Could not reach the local API server. Make sure wallet-analyzer-web is running.";
+    elements.serverStatus.className = "server-status warn";
   }
 }
 
-async function loadFile(file) {
+async function loadWalletFile(file) {
   if (!file) {
     return;
   }
-
-  state.file = file;
-  state.fileContent = await file.text();
+  state.walletFile = file;
+  state.walletFileContent = await file.text();
   const sizeKb = Math.max(1, Math.round(file.size / 1024));
-  fileMeta.textContent = `${file.name} loaded • ${sizeKb} KB`;
-  statusText.textContent = "File loaded. Review your settings and start the analysis.";
-  resetProgressPanel();
+  elements.fileMeta.textContent = `${file.name} loaded • ${sizeKb} KB`;
+  elements.walletStatusText.textContent = "File loaded. Review your settings and start the analysis.";
+  resetProgress(elements.walletProgressPanel, elements.walletProgressPhase, elements.walletProgressCount, elements.walletProgressFill, elements.walletProgressMessage);
 }
 
-async function handleAnalyze(event) {
+async function handleWalletAnalyze(event) {
   event.preventDefault();
-
-  if (!state.file || !state.fileContent.trim()) {
-    statusText.textContent = "Choose a CSV, TXT, or JSON file first.";
+  if (!state.walletFile || !state.walletFileContent.trim()) {
+    elements.walletStatusText.textContent = "Choose a CSV, TXT, or JSON file first.";
     return;
   }
 
-  const pollToken = state.pollToken + 1;
-  state.pollToken = pollToken;
-  state.activeJobId = null;
-  state.latestResponse = null;
-  state.latestDetails = null;
-
-  setLoading(true, "Submitting the analysis job...");
-  setDownloadButtons(false);
-  updateProgressPanel(
-    {
-      phase: "queue",
-      completed: 0,
-      total: 0,
-      message: "Uploading your file and preparing the analysis job.",
-      progress_percent: 1
-    },
-    "queued"
-  );
+  const token = nextPollToken();
+  state.walletResponse = null;
+  state.walletDetails = null;
+  setWalletLoading(true, "Submitting the wallet analysis job...");
+  setWalletDownloads(false);
+  updateProgress(elements.walletProgressPanel, elements.walletProgressPhase, elements.walletProgressCount, elements.walletProgressFill, elements.walletProgressMessage, {
+    phase: "queue", completed: 0, total: 0, message: "Uploading your wallet file and preparing the job.", progress_percent: 1
+  }, "queued", elements.walletStatusText);
 
   const payload = {
-    api_key: controls.apiKey.value.trim(),
-    file_name: state.file.name,
-    content: state.fileContent,
-    address_column: controls.addressColumn.value.trim(),
-    duration: controls.duration.value,
-    details: controls.details.value,
-    workers: Number(controls.workers.value || 4),
-    top_tokens: Number(controls.topTokens.value || 3),
-    retry_passes: Number(controls.retryPasses.value || 2),
-    min_total_trades: Number(controls.minTotalTrades.value || 15),
-    min_unique_tokens: Number(controls.minUniqueTokens.value || 3),
-    min_total_invested_usd: Number(controls.minTotalInvestedUsd.value || 1000),
-    min_win_rate: Number(controls.minWinRate.value || 0.5),
-    min_realized_profit_usd: Number(controls.minRealizedProfitUsd.value || 250),
-    min_total_profit_usd: Number(controls.minTotalProfitUsd.value || 500)
+    api_key: elements.sharedApiKey.value.trim(),
+    file_name: state.walletFile.name,
+    content: state.walletFileContent,
+    address_column: walletControls.addressColumn.value.trim(),
+    duration: walletControls.duration.value,
+    details: walletControls.details.value,
+    workers: Number(walletControls.workers.value || 4),
+    top_tokens: Number(walletControls.topTokens.value || 3),
+    retry_passes: Number(walletControls.retryPasses.value || 2),
+    timeout: Number(walletControls.timeout.value || 20),
+    min_total_trades: Number(walletControls.minTotalTrades.value || 15),
+    min_unique_tokens: Number(walletControls.minUniqueTokens.value || 3),
+    min_total_invested_usd: Number(walletControls.minTotalInvestedUsd.value || 1000),
+    min_win_rate: Number(walletControls.minWinRate.value || 0.5),
+    min_realized_profit_usd: Number(walletControls.minRealizedProfitUsd.value || 250),
+    min_total_profit_usd: Number(walletControls.minTotalProfitUsd.value || 500)
   };
 
   try {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+    const job = await submitAndPollJob("/api/analyze", payload, token, {
+      panel: elements.walletProgressPanel,
+      phase: elements.walletProgressPhase,
+      count: elements.walletProgressCount,
+      fill: elements.walletProgressFill,
+      message: elements.walletProgressMessage,
+      statusText: elements.walletStatusText
     });
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || "Analysis failed.");
-    }
-
-    state.activeJobId = data.job_id;
-    state.downloadPrefix = data.download_prefix || "wallet-screen";
-    updateProgressPanel(
-      {
-        phase: "queue",
-        completed: 0,
-        total: 0,
-        message: "Job accepted. Waiting for the analyzer to start.",
-        progress_percent: 2
-      },
-      "queued"
-    );
-
-    const job = await pollJobUntilComplete(data.job_id, pollToken);
-    if (pollToken !== state.pollToken) {
-      return;
-    }
-    if (job.status !== "succeeded" || !job.result) {
-      throw new Error(job.error || job.progress?.message || "Analysis failed.");
-    }
-
-    state.latestResponse = job.result;
-    state.latestDetails = job.result.details || null;
-    state.downloadPrefix = job.result.download_prefix || state.downloadPrefix;
-    renderResults(job.result.report, job.result.details);
-    updateProgressPanel(job.progress, job.status);
-    statusText.textContent = "Analysis complete. You can inspect the table or download the reports.";
+    state.walletResponse = job.result;
+    state.walletDetails = job.result.details || null;
+    state.walletDownloadPrefix = job.result.download_prefix || "wallet-screen";
+    renderWalletResults(job.result.report, job.result.details);
+    elements.walletStatusText.textContent = "Wallet analysis complete. You can inspect the table or download the reports.";
   } catch (error) {
-    if (pollToken === state.pollToken) {
-      const message = error instanceof Error ? error.message : "Analysis failed.";
-      updateProgressPanel(
-        {
-          phase: "failed",
-          completed: 0,
-          total: 0,
-          message,
-          progress_percent: 100
-        },
-        "failed"
-      );
-      statusText.textContent = message;
+    if (token === state.pollToken) {
+      elements.walletStatusText.textContent = error.message;
     }
   } finally {
-    if (pollToken === state.pollToken) {
-      state.activeJobId = null;
-      setLoading(false);
+    if (token === state.pollToken) {
+      setWalletLoading(false);
     }
   }
 }
 
-async function pollJobUntilComplete(jobId, pollToken) {
-  while (pollToken === state.pollToken) {
-    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || "Could not fetch job progress.");
+async function handleTokenAnalyze(event) {
+  event.preventDefault();
+  if (!tokenControls.tokenAddress.value.trim()) {
+    elements.tokenStatusText.textContent = "Enter a token contract address first.";
+    return;
+  }
+
+  const token = nextPollToken();
+  state.tokenResponse = null;
+  setTokenLoading(true, "Submitting the token intel job...");
+  setTokenDownloads(false);
+  updateProgress(elements.tokenProgressPanel, elements.tokenProgressPhase, elements.tokenProgressCount, elements.tokenProgressFill, elements.tokenProgressMessage, {
+    phase: "queue", completed: 0, total: 0, message: "Submitting token intel request.", progress_percent: 1
+  }, "queued", elements.tokenStatusText);
+
+  const payload = {
+    api_key: elements.sharedApiKey.value.trim(),
+    token_address: tokenControls.tokenAddress.value.trim(),
+    profitability_duration: tokenControls.profitabilityDuration.value,
+    holder_limit: Number(tokenControls.holderLimit.value || 30),
+    trade_limit: Number(tokenControls.tradeLimit.value || 200),
+    early_buyer_limit: Number(tokenControls.earlyBuyerLimit.value || 20),
+    trader_limit: Number(tokenControls.traderLimit.value || 20),
+    candidate_limit: Number(tokenControls.candidateLimit.value || 40)
+  };
+
+  try {
+    const job = await submitAndPollJob("/api/token-intel", payload, token, {
+      panel: elements.tokenProgressPanel,
+      phase: elements.tokenProgressPhase,
+      count: elements.tokenProgressCount,
+      fill: elements.tokenProgressFill,
+      message: elements.tokenProgressMessage,
+      statusText: elements.tokenStatusText
+    });
+    state.tokenResponse = job.result;
+    state.tokenDownloadPrefix = job.result.download_prefix || "token-intel";
+    renderTokenResults(job.result.report);
+    elements.tokenStatusText.textContent = "Token intel complete. Review the candidate wallets and download the report if needed.";
+  } catch (error) {
+    if (token === state.pollToken) {
+      elements.tokenStatusText.textContent = error.message;
     }
+  } finally {
+    if (token === state.pollToken) {
+      setTokenLoading(false);
+    }
+  }
+}
 
-    const job = data.job;
-    updateProgressPanel(job.progress, job.status);
+async function submitAndPollJob(endpoint, payload, token, progressEls) {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || "Analysis failed.");
+  }
 
-    if (job.status === "succeeded" || job.status === "failed") {
+  updateProgress(progressEls.panel, progressEls.phase, progressEls.count, progressEls.fill, progressEls.message, {
+    phase: "queue", completed: 0, total: 0, message: "Job accepted. Waiting for the analyzer to start.", progress_percent: 2
+  }, "queued", progressEls.statusText);
+
+  while (token === state.pollToken) {
+    const jobResponse = await fetch(`/api/jobs/${encodeURIComponent(data.job_id)}`);
+    const jobData = await jobResponse.json();
+    if (!jobResponse.ok || !jobData.success) {
+      throw new Error(jobData.error || "Could not fetch job progress.");
+    }
+    const job = jobData.job;
+    updateProgress(progressEls.panel, progressEls.phase, progressEls.count, progressEls.fill, progressEls.message, job.progress, job.status, progressEls.statusText);
+    if (job.status === "succeeded") {
       return job;
     }
-
+    if (job.status === "failed") {
+      throw new Error(job.error || job.progress?.message || "Analysis failed.");
+    }
     await sleep(job.status === "queued" ? 450 : 800);
   }
 
   throw new Error("Analysis was interrupted.");
 }
 
-function renderResults(report, details) {
-  resultsPanel.classList.remove("hidden");
+function renderWalletResults(report, details) {
+  elements.walletResultsPanel.classList.remove("hidden");
   renderSummaryCards(report.summary, report.input);
-  renderSpotlights(report.wallets || []);
-  renderTable(report.wallets || []);
-  renderMessageList(invalidRowsBox, report.invalid_rows, formatInvalidRow);
-  renderMessageList(requestErrorsBox, report.request_errors, formatRequestError);
-  setDownloadButtons(true);
+  renderWalletSpotlights(report.wallets || []);
+  renderWalletTable(report.wallets || []);
+  renderMessageList(elements.invalidRowsBox, report.invalid_rows, formatInvalidRow);
+  renderMessageList(elements.requestErrorsBox, report.request_errors, formatRequestError);
+  setWalletDownloads(true);
 }
 
 function renderSummaryCards(summary, input) {
@@ -282,23 +352,19 @@ function renderSummaryCards(summary, input) {
     { label: "Insufficient history", value: summary.insufficient_history, note: "Too little capital or trade history" }
   ];
 
-  summaryGrid.innerHTML = cards
-    .map(
-      (card) => `
-        <article class="summary-card">
-          <span class="metric-label">${escapeHtml(card.label)}</span>
-          <strong>${escapeHtml(String(card.value))}</strong>
-          <span>${escapeHtml(card.note)}</span>
-        </article>
-      `
-    )
-    .join("");
+  elements.summaryGrid.innerHTML = cards.map((card) => `
+    <article class="summary-card">
+      <span class="metric-label">${escapeHtml(card.label)}</span>
+      <strong>${escapeHtml(String(card.value))}</strong>
+      <span>${escapeHtml(card.note)}</span>
+    </article>
+  `).join("");
 }
 
-function renderSpotlights(rows) {
+function renderWalletSpotlights(rows) {
   const spotlightRows = rows.slice(0, 3);
   if (!spotlightRows.length) {
-    spotlightGrid.innerHTML = `
+    elements.spotlightGrid.innerHTML = `
       <article class="spotlight-card">
         <span class="metric-label">No successful wallet results</span>
         <strong>Only request errors came back.</strong>
@@ -307,49 +373,113 @@ function renderSpotlights(rows) {
     `;
     return;
   }
-
-  spotlightGrid.innerHTML = spotlightRows
-    .map(
-      (row, index) => `
-        <article class="spotlight-card">
-          <span class="metric-label">Rank ${index + 1}</span>
-          <strong>${escapeHtml(shortWallet(row.wallet))}</strong>
-          <span class="status-pill status-${escapeHtml(row.status)}">${escapeHtml(row.status.replaceAll("_", " "))}</span>
-          <span>Score ${escapeHtml(String(row.score))} • Total PnL ${formatUsd(row.total_profit_usd)}</span>
-          <span>${escapeHtml(row.status_reason)}</span>
-        </article>
-      `
-    )
-    .join("");
+  elements.spotlightGrid.innerHTML = spotlightRows.map((row, index) => `
+    <article class="spotlight-card">
+      <span class="metric-label">Rank ${index + 1}</span>
+      <strong>${escapeHtml(shortWallet(row.wallet))}</strong>
+      <span class="status-pill status-${escapeHtml(row.status)}">${escapeHtml(row.status.replaceAll("_", " "))}</span>
+      <span>Score ${escapeHtml(String(row.score))} • Total PnL ${formatUsd(row.total_profit_usd)}</span>
+      <span>${escapeHtml(row.status_reason)}</span>
+    </article>
+  `).join("");
 }
 
-function renderTable(rows) {
+function renderWalletTable(rows) {
   if (!rows.length) {
-    resultsBody.innerHTML = `
-      <tr>
-        <td colspan="9">No successful wallet results were returned.</td>
-      </tr>
+    elements.resultsBody.innerHTML = `<tr><td colspan="9">No successful wallet results were returned.</td></tr>`;
+    return;
+  }
+  elements.resultsBody.innerHTML = rows.map((row) => `
+    <tr>
+      <td class="wallet-cell">${escapeHtml(row.wallet)}</td>
+      <td><span class="status-pill status-${escapeHtml(row.status)}">${escapeHtml(row.status.replaceAll("_", " "))}</span></td>
+      <td class="numeric">${escapeHtml(String(row.score))}</td>
+      <td class="numeric">${formatPercent(row.win_rate_pct)}</td>
+      <td class="numeric">${formatUsd(row.total_invested_usd)}</td>
+      <td class="numeric">${formatUsd(row.realized_profit_usd)}</td>
+      <td class="numeric">${formatUsd(row.total_profit_usd)}</td>
+      <td class="numeric">${formatPercent(row.estimated_total_roi_pct)}</td>
+      <td>${escapeHtml(row.top_tokens || "-")}</td>
+    </tr>
+  `).join("");
+}
+
+function renderTokenResults(report) {
+  elements.tokenResultsPanel.classList.remove("hidden");
+  renderTokenSummary(report);
+  renderTokenClusters(report.clusters || []);
+  renderTokenTable(report.candidates || []);
+  renderTokenHolders(report.top_holders || []);
+  renderMessageList(elements.tokenNotesBox, report.analysis_notes, (item) => item);
+  setTokenDownloads(true);
+}
+
+function renderTokenSummary(report) {
+  const token = report.token || {};
+  const summary = report.summary || {};
+  const cards = [
+    { label: token.symbol || "Token", value: token.name || shortWallet(token.address || ""), note: token.address || "" },
+    { label: "Candidates", value: summary.candidate_wallets || 0, note: `${summary.profitable_wallets || 0} profitable overall wallets` },
+    { label: "Clusters", value: summary.clusters_found || 0, note: `${summary.borderline_wallets || 0} borderline overall wallets` },
+    { label: "Price", value: formatUsd(token.price_usd), note: `MC ${formatUsd(token.market_cap)}` },
+    { label: "Liquidity", value: formatUsd(token.liquidity_usd), note: `${token.holders || 0} holders reported` }
+  ];
+  elements.tokenSummaryGrid.innerHTML = cards.map((card) => `
+    <article class="summary-card">
+      <span class="metric-label">${escapeHtml(card.label)}</span>
+      <strong>${escapeHtml(String(card.value))}</strong>
+      <span>${escapeHtml(card.note)}</span>
+    </article>
+  `).join("");
+}
+
+function renderTokenClusters(clusters) {
+  if (!clusters.length) {
+    elements.tokenClustersGrid.innerHTML = `
+      <article class="spotlight-card">
+        <span class="metric-label">No strong funding clusters</span>
+        <strong>Each candidate wallet appears to have a distinct first funding source.</strong>
+        <span>That can still be useful if the highest-ranked wallets are independently strong.</span>
+      </article>
     `;
     return;
   }
+  elements.tokenClustersGrid.innerHTML = clusters.slice(0, 3).map((cluster, index) => `
+    <article class="spotlight-card">
+      <span class="metric-label">Cluster ${index + 1}</span>
+      <strong>${escapeHtml(shortWallet(cluster.funding_source))}</strong>
+      <span>${escapeHtml(String(cluster.wallet_count))} candidate wallets share this first funding source.</span>
+      <span>${escapeHtml(cluster.wallets.slice(0, 3).map(shortWallet).join(", "))}</span>
+    </article>
+  `).join("");
+}
 
-  resultsBody.innerHTML = rows
-    .map(
-      (row) => `
-        <tr>
-          <td class="wallet-cell">${escapeHtml(row.wallet)}</td>
-          <td><span class="status-pill status-${escapeHtml(row.status)}">${escapeHtml(row.status.replaceAll("_", " "))}</span></td>
-          <td class="numeric">${escapeHtml(String(row.score))}</td>
-          <td class="numeric">${formatPercent(row.win_rate_pct)}</td>
-          <td class="numeric">${formatUsd(row.total_invested_usd)}</td>
-          <td class="numeric">${formatUsd(row.realized_profit_usd)}</td>
-          <td class="numeric">${formatUsd(row.total_profit_usd)}</td>
-          <td class="numeric">${formatPercent(row.estimated_total_roi_pct)}</td>
-          <td>${escapeHtml(row.top_tokens || "-")}</td>
-        </tr>
-      `
-    )
-    .join("");
+function renderTokenTable(rows) {
+  if (!rows.length) {
+    elements.tokenResultsBody.innerHTML = `<tr><td colspan="9">No candidate wallets were returned for this token.</td></tr>`;
+    return;
+  }
+  elements.tokenResultsBody.innerHTML = rows.map((row) => `
+    <tr>
+      <td class="wallet-cell">${escapeHtml(row.wallet)}</td>
+      <td class="numeric">${escapeHtml(String(row.alpha_score ?? "-"))}</td>
+      <td>${escapeHtml((row.source_tags || []).join(", "))}</td>
+      <td>${row.wallet_status ? `<span class="status-pill status-${escapeHtml(row.wallet_status)}">${escapeHtml(row.wallet_status.replaceAll("_", " "))}</span>` : "-"}</td>
+      <td class="numeric">${formatUsd(row.holder_value_usd)}</td>
+      <td class="numeric">${formatUsd(row.trade_volume_usd)}</td>
+      <td class="numeric">${row.early_rank ?? "-"}</td>
+      <td>${row.funding_cluster_size ? `${escapeHtml(String(row.funding_cluster_size))} via ${escapeHtml(shortWallet(row.funding_source || ""))}` : "-"}</td>
+      <td>${escapeHtml((row.notes || []).join(" | "))}</td>
+    </tr>
+  `).join("");
+}
+
+function renderTokenHolders(rows) {
+  if (!rows.length) {
+    elements.tokenHoldersBox.textContent = "None.";
+    return;
+  }
+  elements.tokenHoldersBox.textContent = rows.map((row, index) => `${index + 1}. ${shortWallet(row.wallet)} | ${formatUsd(row.value_usd)} | ${Number(row.share_pct || 0).toFixed(2)}%`).join("\n");
 }
 
 function renderMessageList(container, items, formatter) {
@@ -360,55 +490,64 @@ function renderMessageList(container, items, formatter) {
   container.textContent = items.map(formatter).join("\n");
 }
 
-function formatInvalidRow(item) {
-  return `row ${item.source_row}: ${item.raw_value || "<empty>"} (${item.reason})`;
-}
-
-function formatRequestError(item) {
-  return `${shortWallet(item.wallet)}: ${item.error}`;
-}
-
-function setLoading(isLoading, message = "") {
-  analyzeButton.disabled = isLoading;
-  analyzeButton.textContent = isLoading ? "Analyzing..." : "Analyze wallets";
+function setWalletLoading(isLoading, message = "") {
+  elements.walletAnalyzeButton.disabled = isLoading;
+  elements.walletAnalyzeButton.textContent = isLoading ? "Analyzing..." : "Analyze wallets";
   if (message) {
-    statusText.textContent = message;
+    elements.walletStatusText.textContent = message;
   }
 }
 
-function setDownloadButtons(enabled) {
-  downloadCsvButton.disabled = !enabled || !state.latestResponse?.csv_content;
-  downloadJsonButton.disabled = !enabled || !state.latestResponse?.report;
-  downloadDetailsButton.disabled = !enabled || !state.latestDetails;
+function setTokenLoading(isLoading, message = "") {
+  elements.tokenAnalyzeButton.disabled = isLoading;
+  elements.tokenAnalyzeButton.textContent = isLoading ? "Analyzing..." : "Analyze token";
+  if (message) {
+    elements.tokenStatusText.textContent = message;
+  }
 }
 
-function resetProgressPanel() {
-  progressPanel.classList.add("hidden");
-  progressPanel.classList.remove("failed", "complete");
-  progressPhase.textContent = "Waiting";
-  progressCount.textContent = "0 / 0";
-  progressFill.style.width = "0%";
-  progressMessage.textContent = "No job running.";
+function setWalletDownloads(enabled) {
+  elements.downloadCsvButton.disabled = !enabled || !state.walletResponse?.csv_content;
+  elements.downloadJsonButton.disabled = !enabled || !state.walletResponse?.report;
+  elements.downloadDetailsButton.disabled = !enabled || !state.walletDetails;
 }
 
-function updateProgressPanel(progress = {}, jobStatus = "running") {
+function setTokenDownloads(enabled) {
+  elements.downloadTokenCsvButton.disabled = !enabled || !state.tokenResponse?.csv_content;
+  elements.downloadTokenJsonButton.disabled = !enabled || !state.tokenResponse?.report;
+}
+
+function resetProgress(panel, phase, count, fill, message) {
+  panel.classList.add("hidden");
+  panel.classList.remove("failed", "complete");
+  phase.textContent = "Waiting";
+  count.textContent = "0 / 0";
+  fill.style.width = "0%";
+  message.textContent = "No job running.";
+}
+
+function updateProgress(panel, phaseEl, countEl, fillEl, messageEl, progress = {}, jobStatus = "running", statusTextEl = null) {
   const phase = progress.phase || "queue";
   const completed = Number(progress.completed || 0);
   const total = Number(progress.total || 0);
   const percent = clampProgress(progress.progress_percent);
-  const message = progress.message || "Working through your wallets.";
+  const message = progress.message || "Working through the request.";
 
-  progressPanel.classList.remove("hidden");
-  progressPanel.classList.toggle("failed", jobStatus === "failed" || phase === "failed");
-  progressPanel.classList.toggle("complete", jobStatus === "succeeded" || phase === "done");
-  progressPhase.textContent = formatPhaseLabel(phase, jobStatus);
-  progressCount.textContent = formatProgressCount(phase, completed, total);
-  progressFill.style.width = `${percent}%`;
-  progressMessage.textContent = message;
-
-  if (jobStatus === "queued" || jobStatus === "running") {
-    statusText.textContent = message;
+  panel.classList.remove("hidden");
+  panel.classList.toggle("failed", jobStatus === "failed" || phase === "failed");
+  panel.classList.toggle("complete", jobStatus === "succeeded" || phase === "done");
+  phaseEl.textContent = formatPhaseLabel(phase, jobStatus);
+  countEl.textContent = formatProgressCount(phase, completed, total);
+  fillEl.style.width = `${percent}%`;
+  messageEl.textContent = message;
+  if (statusTextEl && (jobStatus === "queued" || jobStatus === "running")) {
+    statusTextEl.textContent = message;
   }
+}
+
+function nextPollToken() {
+  state.pollToken += 1;
+  return state.pollToken;
 }
 
 function formatPhaseLabel(phase, jobStatus) {
@@ -418,12 +557,11 @@ function formatPhaseLabel(phase, jobStatus) {
   if (jobStatus === "succeeded" || phase === "done") {
     return "Run complete";
   }
-
   const labels = {
     queue: "Queued",
-    prepare: "Preparing wallets",
+    prepare: "Preparing data",
     screening: "Screening wallets",
-    details: "Loading token details"
+    details: "Loading details"
   };
   return labels[phase] || "Running";
 }
@@ -432,24 +570,15 @@ function formatProgressCount(phase, completed, total) {
   if (total > 0) {
     return `${completed} / ${total}`;
   }
-  if (phase === "queue") {
-    return "starting";
-  }
-  return `${completed}`;
+  return phase === "queue" ? "starting" : `${completed}`;
 }
 
-function clampProgress(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(100, Math.round(number)));
+function formatInvalidRow(item) {
+  return `row ${item.source_row}: ${item.raw_value || "<empty>"} (${item.reason})`;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
+function formatRequestError(item) {
+  return `${shortWallet(item.wallet)}: ${item.error}`;
 }
 
 function downloadBlob(filename, content, type) {
@@ -466,23 +595,31 @@ function downloadBlob(filename, content, type) {
 
 function shortWallet(wallet) {
   if (!wallet || wallet.length < 12) {
-    return wallet;
+    return wallet || "-";
   }
   return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
 }
 
 function formatUsd(value) {
   const number = Number(value || 0);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(number);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(number);
 }
 
 function formatPercent(value) {
   const number = Number(value || 0);
   return `${number.toFixed(1)}%`;
+}
+
+function clampProgress(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function escapeHtml(value) {

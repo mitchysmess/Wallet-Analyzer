@@ -110,6 +110,114 @@ class WalletDetails:
         }
 
 
+@dataclass(slots=True)
+class TokenOverview:
+    address: str
+    symbol: str = ""
+    name: str = ""
+    price: float = 0.0
+    market_cap: float = 0.0
+    liquidity: float = 0.0
+    holder_count: int = 0
+    logo_uri: str = ""
+
+    @classmethod
+    def from_payload(cls, address: str, payload: Mapping[str, Any] | None) -> "TokenOverview":
+        payload = payload or {}
+        return cls(
+            address=address,
+            symbol=str(payload.get("symbol") or payload.get("ticker") or ""),
+            name=str(payload.get("name") or ""),
+            price=_to_float(payload.get("price") or payload.get("price_usd") or payload.get("value")),
+            market_cap=_to_float(payload.get("market_cap") or payload.get("mc") or payload.get("marketcap")),
+            liquidity=_to_float(payload.get("liquidity") or payload.get("liquidity_usd")),
+            holder_count=_to_int(payload.get("holder") or payload.get("holders") or payload.get("holder_count")),
+            logo_uri=str(payload.get("logoURI") or payload.get("logo_uri") or payload.get("logo") or ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class TokenHolderSnapshot:
+    wallet: str
+    amount: float = 0.0
+    value_usd: float = 0.0
+    share_pct: float = 0.0
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "TokenHolderSnapshot":
+        return cls(
+            wallet=str(payload.get("owner") or payload.get("wallet") or payload.get("address") or ""),
+            amount=_to_float(payload.get("amount") or payload.get("ui_amount") or payload.get("balance")),
+            value_usd=_to_float(payload.get("value") or payload.get("value_usd") or payload.get("usd_value")),
+            share_pct=_normalize_percentage(payload.get("percentage") or payload.get("share") or payload.get("ratio")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class TokenTradeSnapshot:
+    wallet: str
+    side: str
+    volume_usd: float = 0.0
+    token_amount: float = 0.0
+    block_time: int | None = None
+    tx_hash: str = ""
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "TokenTradeSnapshot":
+        side = str(payload.get("side") or payload.get("tx_type") or payload.get("trade_type") or "").lower()
+        if side in {"swapbuy", "buy_swap"}:
+            side = "buy"
+        elif side in {"swapsell", "sell_swap"}:
+            side = "sell"
+        return cls(
+            wallet=str(
+                payload.get("owner")
+                or payload.get("wallet")
+                or payload.get("user")
+                or payload.get("maker")
+                or payload.get("trader")
+                or payload.get("source_owner")
+                or ""
+            ),
+            side=side,
+            volume_usd=_to_float(payload.get("value") or payload.get("volume_usd") or payload.get("amount_usd") or payload.get("usd")),
+            token_amount=_to_float(payload.get("amount") or payload.get("token_amount") or payload.get("ui_amount")),
+            block_time=_to_optional_int(payload.get("blockUnixTime") or payload.get("block_time") or payload.get("unix_time")),
+            tx_hash=str(payload.get("txHash") or payload.get("tx_hash") or payload.get("signature") or ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class TokenFundingSnapshot:
+    wallet: str
+    funded_by: str = ""
+    tx_hash: str = ""
+    block_time: int | None = None
+    token_address: str = ""
+
+    @classmethod
+    def from_payload(cls, wallet: str, payload: Mapping[str, Any]) -> "TokenFundingSnapshot":
+        return cls(
+            wallet=wallet,
+            funded_by=str(payload.get("sender") or payload.get("funded_by") or payload.get("source") or payload.get("from") or ""),
+            tx_hash=str(payload.get("tx_hash") or payload.get("txHash") or payload.get("signature") or ""),
+            block_time=_to_optional_int(payload.get("block_time") or payload.get("blockUnixTime") or payload.get("unix_time")),
+            token_address=str(payload.get("token_address") or payload.get("address") or ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 class BirdeyeClient:
     def __init__(
         self,
@@ -170,6 +278,70 @@ class BirdeyeClient:
             summary=SummarySnapshot.from_summary_payload(data.get("summary")),
             tokens=tokens,
         )
+
+    def fetch_token_overview(self, token_address: str) -> TokenOverview:
+        payload = self._request_json("GET", "/defi/token_overview", query={"address": token_address})
+        data = payload.get("data") or {}
+        return TokenOverview.from_payload(token_address, data)
+
+    def fetch_token_holders(self, token_address: str, *, limit: int = 30, offset: int = 0) -> list[TokenHolderSnapshot]:
+        payload = self._request_json(
+            "GET",
+            "/defi/v3/token/holder",
+            query={"address": token_address, "limit": limit, "offset": offset},
+        )
+        data = payload.get("data") or {}
+        items = data.get("items") or data.get("holders") or data.get("list") or data
+        if isinstance(items, list):
+            return [TokenHolderSnapshot.from_payload(item) for item in items if isinstance(item, Mapping)]
+        return []
+
+    def fetch_token_trades(self, token_address: str, *, limit: int = 200, offset: int = 0) -> list[TokenTradeSnapshot]:
+        try:
+            payload = self._request_json(
+                "GET",
+                "/defi/v3/token/txs",
+                query={"address": token_address, "limit": limit, "offset": offset, "sort_type": "asc"},
+            )
+        except BirdeyeAPIError:
+            payload = self._request_json(
+                "GET",
+                "/defi/txs/token",
+                query={"address": token_address, "limit": limit, "offset": offset, "sort_type": "asc"},
+            )
+        data = payload.get("data") or {}
+        items = data.get("items") or data.get("txs") or data.get("history") or data
+        if isinstance(items, list):
+            return [
+                trade
+                for trade in (TokenTradeSnapshot.from_payload(item) for item in items if isinstance(item, Mapping))
+                if trade.wallet
+            ]
+        return []
+
+    def fetch_wallet_first_funded(self, wallets: list[str], *, token_address: str | None = None) -> list[TokenFundingSnapshot]:
+        if not wallets:
+            return []
+        body: dict[str, Any] = {"wallets": wallets}
+        if token_address:
+            body["token_address"] = token_address
+        payload = self._request_json("POST", "/wallet/v2/tx/first-funded", body=body)
+        data = payload.get("data") or {}
+        rows: list[TokenFundingSnapshot] = []
+        if isinstance(data, Mapping):
+            for wallet, entry in data.items():
+                if isinstance(entry, Mapping):
+                    rows.append(TokenFundingSnapshot.from_payload(str(wallet), entry))
+                elif isinstance(entry, list) and entry and isinstance(entry[0], Mapping):
+                    rows.append(TokenFundingSnapshot.from_payload(str(wallet), entry[0]))
+        elif isinstance(data, list):
+            for entry in data:
+                if not isinstance(entry, Mapping):
+                    continue
+                wallet = str(entry.get("wallet") or entry.get("address") or "")
+                if wallet:
+                    rows.append(TokenFundingSnapshot.from_payload(wallet, entry))
+        return rows
 
     def _request_json(
         self,
@@ -274,6 +446,13 @@ def _parse_retry_after_seconds(value: str | None) -> float:
         return 0.0
 
 
+def _normalize_percentage(value: Any) -> float:
+    number = _to_float(value)
+    if number > 1:
+        return number
+    return number * 100 if 0 < number <= 1 else 0.0
+
+
 def _to_float(value: Any) -> float:
     if value in (None, ""):
         return 0.0
@@ -286,6 +465,15 @@ def _to_float(value: Any) -> float:
 def _to_int(value: Any) -> int:
     if value in (None, ""):
         return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(float(value))
+
+
+def _to_optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
     try:
         return int(value)
     except (TypeError, ValueError):

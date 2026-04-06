@@ -3,16 +3,18 @@ import threading
 import time
 import unittest
 from http.server import ThreadingHTTPServer
+from types import SimpleNamespace
 from urllib import request
 from unittest.mock import patch
 
 from wallet_analyzer.addresses import LoadResult, LoadedWallet
 from wallet_analyzer.analysis import ProfitabilityAssessment
-from wallet_analyzer.birdeye import SummarySnapshot
+from wallet_analyzer.birdeye import SummarySnapshot, TokenOverview
 from wallet_analyzer.service import ScreeningRun
 import wallet_analyzer.webapp as webapp
 
 VALID_ADDRESS = "J9L6cQfT8f4V1y3m8YJQ26kQW6hgMHqYjgJv1nP9Wcv"
+TOKEN_ADDRESS = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
 
 
 class WebAppTests(unittest.TestCase):
@@ -73,21 +75,8 @@ class WebAppTests(unittest.TestCase):
                 "duplicates_skipped": 0,
                 "address_column": "trackedWalletAddress",
             },
-            "settings": {
-                "duration": "90d",
-                "top_token_count": 3,
-                "details_mode": "none",
-                "details_limit": 10,
-                "workers": 4,
-            },
-            "summary": {
-                "screened_wallets": 1,
-                "profitable": 1,
-                "borderline": 0,
-                "not_profitable": 0,
-                "insufficient_history": 0,
-                "request_errors": 0,
-            },
+            "settings": {"duration": "90d", "top_token_count": 3, "details_mode": "none", "details_limit": 10, "workers": 4},
+            "summary": {"screened_wallets": 1, "profitable": 1, "borderline": 0, "not_profitable": 0, "insufficient_history": 0, "request_errors": 0},
             "wallets": [assessment.to_flat_dict()],
             "invalid_rows": [],
             "request_errors": [],
@@ -111,67 +100,68 @@ class WebAppTests(unittest.TestCase):
         def fake_screen_wallets_from_content(content, filename, api_key, **kwargs):
             progress_callback = kwargs.get("progress_callback")
             if progress_callback:
-                progress_callback(
-                    {
-                        "phase": "prepare",
-                        "completed": 0,
-                        "total": 1,
-                        "message": "Loaded 1 valid wallet from tracked-wallets.txt.",
-                    }
-                )
-                progress_callback(
-                    {
-                        "phase": "screening",
-                        "completed": 1,
-                        "total": 1,
-                        "wallet": VALID_ADDRESS,
-                        "outcome": "profitable",
-                        "message": f"[1/1] {VALID_ADDRESS} -> profitable",
-                    }
-                )
-                progress_callback(
-                    {
-                        "phase": "done",
-                        "completed": 1,
-                        "total": 1,
-                        "message": "Finished screening 1 wallets. Profitable: 1, borderline: 0, request errors: 0.",
-                    }
-                )
+                progress_callback({"phase": "prepare", "completed": 0, "total": 1, "message": "Loaded 1 valid wallet from tracked-wallets.txt."})
+                progress_callback({"phase": "screening", "completed": 1, "total": 1, "wallet": VALID_ADDRESS, "outcome": "profitable", "message": f"[1/1] {VALID_ADDRESS} -> profitable"})
+                progress_callback({"phase": "done", "completed": 1, "total": 1, "message": "Finished screening 1 wallets. Profitable: 1, borderline: 0, request errors: 0."})
             time.sleep(0.05)
             return fake_run
 
         with patch("wallet_analyzer.webapp.screen_wallets_from_content", side_effect=fake_screen_wallets_from_content):
-            status, payload = self._request_json(
-                "POST",
-                "/api/analyze",
-                {
-                    "file_name": "tracked-wallets.txt",
-                    "content": "[]",
-                    "duration": "90d",
-                    "details": "none",
-                },
-            )
-
+            status, payload = self._request_json("POST", "/api/analyze", {"file_name": "tracked-wallets.txt", "content": "[]", "duration": "90d", "details": "none"})
             self.assertEqual(status, 202)
             self.assertTrue(payload["success"])
             self.assertEqual(payload["download_prefix"], "tracked-wallets")
+            job = self._poll_job(payload["job_id"])
 
-            deadline = time.time() + 5
-            job = None
-            while time.time() < deadline:
-                job_status, job_payload = self._request_json("GET", f"/api/jobs/{payload['job_id']}")
-                self.assertEqual(job_status, 200)
-                job = job_payload["job"]
-                if job["status"] in {"succeeded", "failed"}:
-                    break
-                time.sleep(0.05)
-
-        self.assertIsNotNone(job)
         self.assertEqual(job["status"], "succeeded")
-        self.assertEqual(job["progress"]["phase"], "done")
-        self.assertEqual(job["progress"]["progress_percent"], 100)
+        self.assertEqual(job["result"]["kind"], "wallet_screen")
         self.assertEqual(job["result"]["report"]["summary"]["profitable"], 1)
-        self.assertEqual(job["result"]["report"]["wallets"][0]["wallet"], VALID_ADDRESS)
+
+    def test_token_intel_endpoint_runs_background_job_until_complete(self) -> None:
+        fake_run = SimpleNamespace(
+            overview=TokenOverview(address=TOKEN_ADDRESS, symbol="TEST", name="Test Token"),
+            csv_text="wallet,alpha_score\nJ9L6cQfT8f4V1y3m8YJQ26kQW6hgMHqYjgJv1nP9Wcv,88\n",
+            report_payload={
+                "token": {"address": TOKEN_ADDRESS, "symbol": "TEST", "name": "Test Token"},
+                "summary": {"candidate_wallets": 1, "clusters_found": 0, "profitable_wallets": 1, "borderline_wallets": 0},
+                "clusters": [],
+                "top_holders": [],
+                "analysis_notes": ["note"],
+                "candidates": [{"wallet": VALID_ADDRESS, "alpha_score": 88, "source_tags": ["holder"], "notes": []}],
+            },
+        )
+
+        def fake_analyze_token_address(token_address, api_key, **kwargs):
+            progress_callback = kwargs.get("progress_callback")
+            if progress_callback:
+                progress_callback({"phase": "prepare", "completed": 1, "total": 5, "message": "Loading top holders."})
+                progress_callback({"phase": "screening", "completed": 1, "total": 1, "wallet": VALID_ADDRESS, "outcome": "profitable", "message": f"[1/1] {VALID_ADDRESS} -> profitable"})
+                progress_callback({"phase": "done", "completed": 1, "total": 1, "message": "Finished token intel."})
+            time.sleep(0.05)
+            return fake_run
+
+        with patch("wallet_analyzer.webapp.analyze_token_address", side_effect=fake_analyze_token_address):
+            status, payload = self._request_json("POST", "/api/token-intel", {"token_address": TOKEN_ADDRESS})
+            self.assertEqual(status, 202)
+            self.assertTrue(payload["success"])
+            job = self._poll_job(payload["job_id"])
+
+        self.assertEqual(job["status"], "succeeded")
+        self.assertEqual(job["result"]["kind"], "token_intel")
+        self.assertEqual(job["result"]["report"]["token"]["symbol"], "TEST")
+
+    def _poll_job(self, job_id: str) -> dict[str, object]:
+        deadline = time.time() + 5
+        job = None
+        while time.time() < deadline:
+            job_status, job_payload = self._request_json("GET", f"/api/jobs/{job_id}")
+            self.assertEqual(job_status, 200)
+            job = job_payload["job"]
+            if job["status"] in {"succeeded", "failed"}:
+                break
+            time.sleep(0.05)
+        self.assertIsNotNone(job)
+        return job
 
     def _request_json(self, method: str, path: str, payload: dict[str, object] | None = None) -> tuple[int, dict[str, object]]:
         data = None

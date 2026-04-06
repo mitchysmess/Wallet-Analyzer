@@ -553,3 +553,62 @@ th {
 .progress-panel.failed .progress-meta span {
   color: var(--danger);
 }
+.utility-panel {
+  padding: 1.25rem;
+}
+
+.utility-row {
+  display: flex;
+  gap: 1rem;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.shared-key-field {
+  width: min(460px, 100%);
+}
+
+.tab-shell {
+  padding: 1rem;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.tab-button {
+  border: 1px solid rgba(21, 33, 29, 0.1);
+  border-radius: 999px;
+  padding: 0.85rem 1.15rem;
+  background: rgba(255, 250, 244, 0.88);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.tab-button.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: #fff;
+  border-color: transparent;
+}
+
+.tab-panel.hidden,
+.hidden {
+  display: none;
+}
+
+.mode-grid {
+  margin-top: 0.25rem;
+}
+
+.field-grid-five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.token-summary-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}

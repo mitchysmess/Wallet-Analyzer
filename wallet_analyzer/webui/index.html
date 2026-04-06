@@ -11,198 +11,348 @@
       <header class="hero panel reveal">
         <div>
           <p class="eyebrow">Local Solana Screening Studio</p>
-          <h1>Drop a wallet file and rank the traders worth watching.</h1>
+          <h1>Find profitable traders and token-linked alpha wallets.</h1>
           <p class="hero-copy">
-            This runs against your local analyzer backend, so your file stays on your machine while the server pulls PnL data from Birdeye.
+            Use the wallet screener for bulk address lists, or switch to Token Intel to inspect a contract address for top holders, early buyers, funding clusters, and candidate alpha wallets.
           </p>
         </div>
         <div class="hero-metrics">
           <div class="metric-card">
-            <span class="metric-label">Input</span>
-            <strong>CSV, TXT or JSON</strong>
-            <span>Drag, drop, screen, download.</span>
+            <span class="metric-label">Mode 1</span>
+            <strong>Wallet Screen</strong>
+            <span>Bulk CSV, TXT, or JSON uploads with profitability scoring.</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Lookback</span>
-            <strong>24h to all-time</strong>
-            <span>Use fast recent filters or broader history.</span>
+            <span class="metric-label">Mode 2</span>
+            <strong>Token Intel</strong>
+            <span>Holders, sampled early buyers, and wallet clustering heuristics.</span>
           </div>
           <div class="metric-card">
             <span class="metric-label">Output</span>
             <strong>CSV + JSON</strong>
-            <span>Quick spreadsheet view plus rich diagnostics.</span>
+            <span>Download the ranked wallets or the full report payload.</span>
           </div>
         </div>
       </header>
 
-      <main class="main-grid">
-        <section class="panel uploader reveal" aria-labelledby="upload-title">
-          <div class="section-heading">
-            <p class="eyebrow">Upload</p>
-            <h2 id="upload-title">Bring in your wallet list</h2>
-          </div>
-
-          <label class="dropzone" id="dropzone" for="file-input">
-            <input id="file-input" type="file" accept=".csv,.txt,.json,text/csv,text/plain,application/json">
-            <div class="dropzone-copy">
-              <strong>Drop your file here</strong>
-              <span>or click to choose a CSV, TXT, or JSON file</span>
-            </div>
-            <div class="dropzone-meta" id="file-meta">No file selected yet.</div>
-          </label>
-
-          <div class="server-status" id="server-status">Checking server configuration...</div>
-
-          <form id="analyze-form" class="control-stack">
-            <div class="field-grid field-grid-wide">
-              <label>
-                <span>Optional API key override</span>
-                <input id="api-key" type="password" placeholder="Uses server env key when left blank">
-              </label>
-              <label>
-                <span>Address field or CSV column</span>
-                <input id="address-column" type="text" placeholder="Auto-detects wallet, address, trackedWalletAddress, etc.">
-              </label>
-            </div>
-
-            <div class="field-grid">
-              <label>
-                <span>Duration</span>
-                <select id="duration">
-                  <option value="90d" selected>90d</option>
-                  <option value="30d">30d</option>
-                  <option value="7d">7d</option>
-                  <option value="24h">24h</option>
-                  <option value="all">all</option>
-                </select>
-              </label>
-              <label>
-                <span>Details</span>
-                <select id="details">
-                  <option value="none" selected>none</option>
-                  <option value="profitable">profitable only</option>
-                  <option value="all">all wallets</option>
-                </select>
-              </label>
-              <label>
-                <span>Workers</span>
-                <input id="workers" type="number" min="1" value="4">
-              </label>
-              <label>
-                <span>Top tokens in report</span>
-                <input id="top-tokens" type="number" min="1" value="3">
-              </label>
-              <label>
-                <span>Retry passes</span>
-                <input id="retry-passes" type="number" min="0" value="2">
-              </label>
-            </div>
-
-            <details class="advanced-panel">
-              <summary>Profitability thresholds</summary>
-              <div class="field-grid threshold-grid">
-                <label>
-                  <span>Min trades</span>
-                  <input id="min-total-trades" type="number" min="1" value="15">
-                </label>
-                <label>
-                  <span>Min unique tokens</span>
-                  <input id="min-unique-tokens" type="number" min="1" value="3">
-                </label>
-                <label>
-                  <span>Min invested USD</span>
-                  <input id="min-total-invested-usd" type="number" min="0" step="100" value="1000">
-                </label>
-                <label>
-                  <span>Min win rate</span>
-                  <input id="min-win-rate" type="number" min="0" max="1" step="0.01" value="0.50">
-                </label>
-                <label>
-                  <span>Min realized profit USD</span>
-                  <input id="min-realized-profit-usd" type="number" step="50" value="250">
-                </label>
-                <label>
-                  <span>Min total profit USD</span>
-                  <input id="min-total-profit-usd" type="number" step="50" value="500">
-                </label>
-              </div>
-            </details>
-
-            <div class="action-row">
-              <button class="primary-button" id="analyze-button" type="submit">Analyze wallets</button>
-              <p class="status-text" id="status-text">Ready when you are.</p>
-            </div>
-
-            <div class="progress-panel hidden" id="progress-panel" aria-live="polite">
-              <div class="progress-meta">
-                <strong id="progress-phase">Waiting</strong>
-                <span id="progress-count">0 / 0</span>
-              </div>
-              <div class="progress-track">
-                <div class="progress-fill" id="progress-fill"></div>
-              </div>
-              <div class="progress-message" id="progress-message">No job running.</div>
-            </div>
-          </form>
-        </section>
-
-        <aside class="panel notes reveal">
-          <div class="section-heading">
-            <p class="eyebrow">How it thinks</p>
-            <h2>What the score means</h2>
-          </div>
-          <ul class="note-list">
-            <li><strong>Profitable</strong> means the wallet clears the configured minimums for activity, capital, win rate, realized PnL, and total PnL.</li>
-            <li><strong>Borderline</strong> means there is some positive signal, but one or more core thresholds still miss.</li>
-            <li><strong>Insufficient history</strong> means the wallet has too little trading history or deployed capital to judge reliably.</li>
-          </ul>
-          <p class="fine-print">Birdeye wallet requests are paced automatically now, and failed wallets can be retried in extra passes. If you still see errors, lower <strong>Workers</strong> or raise <strong>Retry passes</strong>.</p>
-        </aside>
-      </main>
-
-      <section class="panel results reveal hidden" id="results-panel" aria-live="polite">
-        <div class="results-header">
+      <section class="panel reveal utility-panel">
+        <div class="utility-row">
           <div>
-            <p class="eyebrow">Results</p>
-            <h2>Screening outcome</h2>
+            <p class="eyebrow">Connection</p>
+            <h2>Birdeye access</h2>
           </div>
-          <div class="download-row">
-            <button class="ghost-button" id="download-csv" disabled>Download CSV</button>
-            <button class="ghost-button" id="download-json" disabled>Download JSON</button>
-            <button class="ghost-button" id="download-details" disabled>Download details</button>
-          </div>
+          <label class="shared-key-field">
+            <span>Optional API key override</span>
+            <input id="shared-api-key" type="password" placeholder="Uses server env key when left blank">
+          </label>
+        </div>
+        <div class="server-status" id="server-status">Checking server configuration...</div>
+      </section>
+
+      <section class="panel reveal tab-shell">
+        <div class="tab-bar" role="tablist" aria-label="Analyzer modes">
+          <button class="tab-button active" id="tab-wallet" data-tab="wallet" role="tab" aria-selected="true">Wallet Screen</button>
+          <button class="tab-button" id="tab-token" data-tab="token" role="tab" aria-selected="false">Token Intel</button>
         </div>
 
-        <div class="summary-grid" id="summary-grid"></div>
-        <div class="spotlight-grid" id="spotlight-grid"></div>
+        <div class="tab-panel" id="panel-wallet" role="tabpanel">
+          <div class="main-grid mode-grid">
+            <section class="uploader" aria-labelledby="upload-title">
+              <div class="section-heading">
+                <p class="eyebrow">Upload</p>
+                <h2 id="upload-title">Bring in your wallet list</h2>
+              </div>
 
-        <div class="table-wrap">
-          <table id="results-table">
-            <thead>
-              <tr>
-                <th>Wallet</th>
-                <th>Status</th>
-                <th>Score</th>
-                <th>Win rate</th>
-                <th>Invested</th>
-                <th>Realized PnL</th>
-                <th>Total PnL</th>
-                <th>ROI</th>
-                <th>Top tokens</th>
-              </tr>
-            </thead>
-            <tbody id="results-body"></tbody>
-          </table>
-        </div>
+              <label class="dropzone" id="dropzone" for="file-input">
+                <input id="file-input" type="file" accept=".csv,.txt,.json,text/csv,text/plain,application/json">
+                <div class="dropzone-copy">
+                  <strong>Drop your file here</strong>
+                  <span>or click to choose a CSV, TXT, or JSON file</span>
+                </div>
+                <div class="dropzone-meta" id="file-meta">No file selected yet.</div>
+              </label>
 
-        <div class="secondary-grid">
-          <section>
-            <h3>Invalid rows</h3>
-            <div class="message-box" id="invalid-rows">None.</div>
+              <form id="wallet-form" class="control-stack">
+                <div class="field-grid field-grid-wide">
+                  <label>
+                    <span>Address field or CSV column</span>
+                    <input id="address-column" type="text" placeholder="Auto-detects wallet, address, trackedWalletAddress, etc.">
+                  </label>
+                  <label>
+                    <span>Duration</span>
+                    <select id="duration">
+                      <option value="90d" selected>90d</option>
+                      <option value="30d">30d</option>
+                      <option value="7d">7d</option>
+                      <option value="24h">24h</option>
+                      <option value="all">all</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="field-grid field-grid-five">
+                  <label>
+                    <span>Details</span>
+                    <select id="details">
+                      <option value="none" selected>none</option>
+                      <option value="profitable">profitable only</option>
+                      <option value="all">all wallets</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Workers</span>
+                    <input id="workers" type="number" min="1" value="4">
+                  </label>
+                  <label>
+                    <span>Top tokens</span>
+                    <input id="top-tokens" type="number" min="1" value="3">
+                  </label>
+                  <label>
+                    <span>Retry passes</span>
+                    <input id="retry-passes" type="number" min="0" value="2">
+                  </label>
+                  <label>
+                    <span>Wallet timeout</span>
+                    <input id="wallet-timeout" type="number" min="5" step="1" value="20">
+                  </label>
+                </div>
+
+                <details class="advanced-panel">
+                  <summary>Profitability thresholds</summary>
+                  <div class="field-grid threshold-grid">
+                    <label>
+                      <span>Min trades</span>
+                      <input id="min-total-trades" type="number" min="1" value="15">
+                    </label>
+                    <label>
+                      <span>Min unique tokens</span>
+                      <input id="min-unique-tokens" type="number" min="1" value="3">
+                    </label>
+                    <label>
+                      <span>Min invested USD</span>
+                      <input id="min-total-invested-usd" type="number" min="0" step="100" value="1000">
+                    </label>
+                    <label>
+                      <span>Min win rate</span>
+                      <input id="min-win-rate" type="number" min="0" max="1" step="0.01" value="0.50">
+                    </label>
+                    <label>
+                      <span>Min realized profit USD</span>
+                      <input id="min-realized-profit-usd" type="number" step="50" value="250">
+                    </label>
+                    <label>
+                      <span>Min total profit USD</span>
+                      <input id="min-total-profit-usd" type="number" step="50" value="500">
+                    </label>
+                  </div>
+                </details>
+
+                <div class="action-row">
+                  <button class="primary-button" id="wallet-analyze-button" type="submit">Analyze wallets</button>
+                  <p class="status-text" id="wallet-status-text">Ready when you are.</p>
+                </div>
+
+                <div class="progress-panel hidden" id="wallet-progress-panel" aria-live="polite">
+                  <div class="progress-meta">
+                    <strong id="wallet-progress-phase">Waiting</strong>
+                    <span id="wallet-progress-count">0 / 0</span>
+                  </div>
+                  <div class="progress-track">
+                    <div class="progress-fill" id="wallet-progress-fill"></div>
+                  </div>
+                  <div class="progress-message" id="wallet-progress-message">No job running.</div>
+                </div>
+              </form>
+            </section>
+
+            <aside class="notes">
+              <div class="section-heading">
+                <p class="eyebrow">How it thinks</p>
+                <h2>Wallet screen notes</h2>
+              </div>
+              <ul class="note-list">
+                <li><strong>Profitable</strong> means the wallet clears the configured minimums for activity, capital, win rate, realized PnL, and total PnL.</li>
+                <li><strong>Borderline</strong> means there is some positive signal, but one or more core thresholds still miss.</li>
+                <li><strong>Insufficient history</strong> means the wallet has too little trading history or deployed capital to judge reliably.</li>
+              </ul>
+              <p class="fine-print">Birdeye wallet requests are paced automatically, and failed wallets are retried in extra passes. Lower <strong>Workers</strong> if you still see request errors on big lists.</p>
+            </aside>
+          </div>
+
+          <section class="results hidden" id="wallet-results-panel" aria-live="polite">
+            <div class="results-header">
+              <div>
+                <p class="eyebrow">Results</p>
+                <h2>Wallet screening outcome</h2>
+              </div>
+              <div class="download-row">
+                <button class="ghost-button" id="download-csv" disabled>Download CSV</button>
+                <button class="ghost-button" id="download-json" disabled>Download JSON</button>
+                <button class="ghost-button" id="download-details" disabled>Download details</button>
+              </div>
+            </div>
+
+            <div class="summary-grid" id="summary-grid"></div>
+            <div class="spotlight-grid" id="spotlight-grid"></div>
+
+            <div class="table-wrap">
+              <table id="results-table">
+                <thead>
+                  <tr>
+                    <th>Wallet</th>
+                    <th>Status</th>
+                    <th>Score</th>
+                    <th>Win rate</th>
+                    <th>Invested</th>
+                    <th>Realized PnL</th>
+                    <th>Total PnL</th>
+                    <th>ROI</th>
+                    <th>Top tokens</th>
+                  </tr>
+                </thead>
+                <tbody id="results-body"></tbody>
+              </table>
+            </div>
+
+            <div class="secondary-grid">
+              <section>
+                <h3>Invalid rows</h3>
+                <div class="message-box" id="invalid-rows">None.</div>
+              </section>
+              <section>
+                <h3>Request errors</h3>
+                <div class="message-box" id="request-errors">None.</div>
+              </section>
+            </div>
           </section>
-          <section>
-            <h3>Request errors</h3>
-            <div class="message-box" id="request-errors">None.</div>
+        </div>
+
+        <div class="tab-panel hidden" id="panel-token" role="tabpanel">
+          <div class="main-grid mode-grid">
+            <section class="uploader" aria-labelledby="token-title">
+              <div class="section-heading">
+                <p class="eyebrow">Token Intel</p>
+                <h2 id="token-title">Inspect a token contract address</h2>
+              </div>
+
+              <form id="token-form" class="control-stack">
+                <div class="field-grid field-grid-wide">
+                  <label>
+                    <span>Token contract address</span>
+                    <input id="token-address" type="text" placeholder="Paste a Solana token CA">
+                  </label>
+                  <label>
+                    <span>Wallet profitability duration</span>
+                    <select id="token-duration">
+                      <option value="90d" selected>90d</option>
+                      <option value="30d">30d</option>
+                      <option value="7d">7d</option>
+                      <option value="24h">24h</option>
+                      <option value="all">all</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="field-grid field-grid-five">
+                  <label>
+                    <span>Top holders</span>
+                    <input id="holder-limit" type="number" min="5" value="30">
+                  </label>
+                  <label>
+                    <span>Trades sampled</span>
+                    <input id="trade-limit" type="number" min="20" value="200">
+                  </label>
+                  <label>
+                    <span>Early buyers</span>
+                    <input id="early-buyer-limit" type="number" min="5" value="20">
+                  </label>
+                  <label>
+                    <span>Active traders</span>
+                    <input id="trader-limit" type="number" min="5" value="20">
+                  </label>
+                  <label>
+                    <span>Candidate wallets</span>
+                    <input id="candidate-limit" type="number" min="10" value="40">
+                  </label>
+                </div>
+
+                <div class="action-row">
+                  <button class="primary-button" id="token-analyze-button" type="submit">Analyze token</button>
+                  <p class="status-text" id="token-status-text">Ready to inspect a token.</p>
+                </div>
+
+                <div class="progress-panel hidden" id="token-progress-panel" aria-live="polite">
+                  <div class="progress-meta">
+                    <strong id="token-progress-phase">Waiting</strong>
+                    <span id="token-progress-count">0 / 0</span>
+                  </div>
+                  <div class="progress-track">
+                    <div class="progress-fill" id="token-progress-fill"></div>
+                  </div>
+                  <div class="progress-message" id="token-progress-message">No job running.</div>
+                </div>
+              </form>
+            </section>
+
+            <aside class="notes">
+              <div class="section-heading">
+                <p class="eyebrow">Heuristics</p>
+                <h2>How Token Intel scores wallets</h2>
+              </div>
+              <ul class="note-list">
+                <li><strong>Holder</strong> means the wallet appears in Birdeye’s token holder sample.</li>
+                <li><strong>Early buyer</strong> is inferred from the earliest sampled token trades returned by Birdeye.</li>
+                <li><strong>Cluster</strong> means multiple candidate wallets share the same first funding source.</li>
+                <li><strong>Alpha score</strong> blends source tags, wallet profitability, holder size, and funding overlaps.</li>
+              </ul>
+              <p class="fine-print">This is a practical wallet discovery tool, not perfect attribution. It does not claim a cluster belongs to a named person unless you later add your own wallet labels.</p>
+            </aside>
+          </div>
+
+          <section class="results hidden" id="token-results-panel" aria-live="polite">
+            <div class="results-header">
+              <div>
+                <p class="eyebrow">Token Intel</p>
+                <h2>Candidate alpha wallets</h2>
+              </div>
+              <div class="download-row">
+                <button class="ghost-button" id="download-token-csv" disabled>Download CSV</button>
+                <button class="ghost-button" id="download-token-json" disabled>Download JSON</button>
+              </div>
+            </div>
+
+            <div class="summary-grid token-summary-grid" id="token-summary-grid"></div>
+            <div class="spotlight-grid" id="token-clusters-grid"></div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Wallet</th>
+                    <th>Alpha score</th>
+                    <th>Sources</th>
+                    <th>Wallet status</th>
+                    <th>Holdings USD</th>
+                    <th>Trade volume USD</th>
+                    <th>Early rank</th>
+                    <th>Funding cluster</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="token-results-body"></tbody>
+              </table>
+            </div>
+
+            <div class="secondary-grid">
+              <section>
+                <h3>Top holders</h3>
+                <div class="message-box" id="token-holders-box">None.</div>
+              </section>
+              <section>
+                <h3>Analysis notes</h3>
+                <div class="message-box" id="token-notes-box">None.</div>
+              </section>
+            </div>
           </section>
         </div>
       </section>
