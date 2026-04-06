@@ -13,7 +13,6 @@ from wallet_analyzer.analysis import ProfitabilityAssessment, ProfitabilityThres
 from wallet_analyzer.birdeye import (
     BirdeyeAPIError,
     BirdeyeClient,
-    SummarySnapshot,
     TokenFundingSnapshot,
     TokenHolderSnapshot,
     TokenOverview,
@@ -27,7 +26,7 @@ ProgressCallback = Callable[[ProgressEvent], None]
 @dataclass(slots=True, frozen=True)
 class TokenIntelOptions:
     holder_limit: int = 30
-    trade_limit: int = 200
+    trade_limit: int = 50
     early_buyer_limit: int = 20
     trader_limit: int = 20
     candidate_limit: int = 40
@@ -158,8 +157,8 @@ def analyze_token_address(
 def _validate_options(options: TokenIntelOptions) -> None:
     if options.holder_limit < 1:
         raise ValueError("holder_limit must be at least 1")
-    if options.trade_limit < 1:
-        raise ValueError("trade_limit must be at least 1")
+    if options.trade_limit < 1 or options.trade_limit > 50:
+        raise ValueError("trade_limit must be between 1 and 50")
     if options.early_buyer_limit < 1:
         raise ValueError("early_buyer_limit must be at least 1")
     if options.trader_limit < 1:

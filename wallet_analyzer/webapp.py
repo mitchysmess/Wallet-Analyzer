@@ -232,7 +232,7 @@ def _run_token_intel_job(job_id: str, payload: dict[str, Any], api_key: str, dow
     try:
         options = TokenIntelOptions(
             holder_limit=int(payload.get("holder_limit", 30)),
-            trade_limit=int(payload.get("trade_limit", 200)),
+            trade_limit=int(payload.get("trade_limit", 50)),
             early_buyer_limit=int(payload.get("early_buyer_limit", 20)),
             trader_limit=int(payload.get("trader_limit", 20)),
             candidate_limit=int(payload.get("candidate_limit", 40)),
@@ -340,3 +340,4 @@ def _utc_now() -> str:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
